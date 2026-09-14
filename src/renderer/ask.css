@@ -346,13 +346,15 @@ button { font-family: inherit; }
 .rs-head .chev { width: 12px; height: 12px; transition: transform .15s; }
 .reasoning.collapsed .chev { transform: rotate(-90deg); }
 .rs-preview {
-  padding: 0 14px 7px;
-  font-size: 13px;
-  line-height: 22px;
-  color: #6b7280;
-  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  margin-left: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  color: #6b7280;
 }
 .rs-body {
   padding: 2px 14px 10px;
@@ -362,7 +364,7 @@ button { font-family: inherit; }
   white-space: pre-wrap;
 }
 .reasoning.collapsed .rs-body { display: none; }
-.reasoning.reasoning-active.collapsed .rs-preview { display: block; }
+.reasoning.reasoning-active.collapsed .rs-head .rs-preview { display: block; }
 .reasoning.reasoning-completed.collapsed .rs-preview { display: none; }
 .reasoning:not(.collapsed) .rs-preview { display: none; }
 
