@@ -362,6 +362,8 @@ button { font-family: inherit; }
   white-space: pre-wrap;
 }
 .reasoning.collapsed .rs-body { display: none; }
+.reasoning.reasoning-active.collapsed .rs-preview { display: block; }
+.reasoning.reasoning-completed.collapsed .rs-preview { display: none; }
 .reasoning:not(.collapsed) .rs-preview { display: none; }
 
 /* Agent / Skill / MCP 调用链路 */

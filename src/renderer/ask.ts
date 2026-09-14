@@ -481,7 +481,8 @@ function buildActions(m, idx) {
 function buildReasoning(m) {
   const box = document.createElement('div')
   const collapsed = m.reasoningCollapsed !== false
-  box.className = 'reasoning' + (collapsed ? ' collapsed' : '')
+  const reasoningActive = !m.reasoningDone && !m.done && !m.__started && !m.text
+  box.className = `reasoning ${reasoningActive ? 'reasoning-active' : 'reasoning-completed'}${collapsed ? ' collapsed' : ''}`
   const head = document.createElement('button')
   head.className = 'rs-head'
   head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span>思考过程</span>`
@@ -720,6 +721,7 @@ function supersedeActiveStream() {
   const active = [...session.messages].reverse().find(m => m.role === 'assistant' && !m.done)
   if (active) {
     active.done = true
+    active.reasoningDone = true
     active.aborted = true
     active.durationMs = Date.now() - (active.replyStartedAt || Date.now())
     refreshMsgEl(active)
@@ -807,6 +809,7 @@ async function respond(delegated = false, existing = null) {
       if (ev.type === 'content') {
         if (!m.__started) {
           m.__started = true
+          m.reasoningDone = true
           m.reasoningCollapsed = true
         }
         m.text += ev.text
@@ -815,6 +818,7 @@ async function respond(delegated = false, existing = null) {
       }
       if (ev.type === 'done') {
         m.done = true
+        m.reasoningDone = true
         m.durationMs = Date.now() - (m.replyStartedAt || m.__lastEventAt || Date.now())
         if (typeof ev.final === 'string') {
           m.text = ev.final
