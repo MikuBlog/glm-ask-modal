@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('askAPI', {
   openSettings: () => ipcRenderer.send('ask:open-settings'),
   quit: () => ipcRenderer.send('ask:quit'),
   saveSession: s => ipcRenderer.invoke('ask:save-session', s),
-  listHistory: () => ipcRenderer.invoke('ask:history-list'),
+  listHistory: payload => ipcRenderer.invoke('ask:history-list', payload),
   loadHistory: id => ipcRenderer.invoke('ask:history-get', id),
   deleteHistory: id => ipcRenderer.invoke('ask:history-del', id),
   pick: kind => ipcRenderer.invoke('ask:pick', kind)

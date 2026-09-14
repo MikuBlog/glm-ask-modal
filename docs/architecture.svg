@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1080" width="1720" height="1080">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6bff"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#188038"/>
+    </marker>
+    <style>
+      .title { font: 700 40px "PingFang SC","Microsoft YaHei",sans-serif; fill:#111827; }
+      .zone { font: 700 23px "PingFang SC","Microsoft YaHei",sans-serif; fill:#111827; }
+      .box-title { font: 700 21px "PingFang SC","Microsoft YaHei",sans-serif; fill:#111827; }
+      .box-sub { font: 17px "PingFang SC","Microsoft YaHei",sans-serif; fill:#57606a; }
+      .small { font: 15px "PingFang SC","Microsoft YaHei",sans-serif; fill:#57606a; }
+      .tiny { font: 14px "SF Mono",Menlo,monospace; fill:#57606a; }
+      .flow { font: 700 16px "PingFang SC",sans-serif; fill:#2f6bff; }
+      .card { fill:#ffffff; stroke:#d0d7de; stroke-width:2; rx:16; }
+      .blue { fill:#f3f8ff; stroke:#82aaff; stroke-width:2; }
+      .green { fill:#f0fff6; stroke:#57d9a3; stroke-width:2; }
+      .yellow { fill:#fffbeb; stroke:#f3c268; stroke-width:2; }
+      .gray { fill:#f6f8fa; stroke:#d0d7de; stroke-width:2; }
+    </style>
+  </defs>
+
+  <rect width="1720" height="1080" fill="#fbfcfd"/>
+  <text x="60" y="70" class="title">GLM问问 · 弹窗整体技术架构</text>
+  <text x="60" y="112" class="small">Electron 多窗口 + 主进程编排 + 独立意图识别 + GLM 流式回复 + 本地 Agent CLI</text>
+
+  <!-- Trigger zone -->
+  <rect x="60" y="155" width="370" height="350" rx="18" class="card yellow"/>
+  <text x="90" y="195" class="zone">触发层</text>
+  <rect x="90" y="220" width="310" height="72" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="112" y="250" class="box-title">全局快捷键</text>
+  <text x="112" y="276" class="small">⌘⇧Space · globalShortcut</text>
+  <rect x="90" y="312" width="310" height="72" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="112" y="342" class="box-title">划词手势</text>
+  <text x="112" y="368" class="small">拖选 / 双击 · uIOhook</text>
+  <rect x="90" y="404" width="310" height="72" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="112" y="434" class="box-title">选中文本捕获</text>
+  <text x="112" y="460" class="small">AX 原生助手 → Cmd+C 兜底</text>
+
+  <!-- Toolbar renderer -->
+  <rect x="60" y="545" width="370" height="215" rx="18" class="card blue"/>
+  <text x="90" y="585" class="zone">划词工具条 Renderer</text>
+  <text x="90" y="622" class="small">toolbar.html + toolbar.ts + preload.ts</text>
+  <text x="90" y="658" class="small">询问 GLM / 总结 / 翻译 / 解释</text>
+  <text x="90" y="690" class="small">自适应窗口贴合 · 下拉菜单</text>
+  <text x="90" y="722" class="small">IPC: tb:ask → 打开问一问</text>
+
+  <!-- Ask renderer -->
+  <rect x="1260" y="155" width="400" height="360" rx="18" class="card blue"/>
+  <text x="1290" y="195" class="zone">问一问弹窗 Renderer</text>
+  <rect x="1290" y="220" width="340" height="62" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="1312" y="245" class="box-title">会话状态机</text>
+  <text x="1312" y="270" class="small">draft / messages / stream map</text>
+  <rect x="1290" y="296" width="340" height="62" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="1312" y="321" class="box-title">UI 能力</text>
+  <text x="1312" y="347" class="small">思考过程 · 工具链路 · 附件编辑</text>
+  <rect x="1290" y="372" width="340" height="62" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="1312" y="397" class="box-title">意图结果展示</text>
+  <text x="1312" y="423" class="small">路由结论 / 耗时 / 流式内容</text>
+  <rect x="1290" y="448" width="340" height="42" rx="12" fill="#fff" stroke="#eaecef"/>
+  <text x="1312" y="475" class="small">IPC: askAPI / cfgAPI</text>
+
+  <!-- Main process -->
+  <rect x="500" y="155" width="700" height="630" rx="22" class="card"/>
+  <text x="535" y="198" class="zone">Electron 主进程 · 编排层</text>
+
+  <rect x="535" y="225" width="300" height="90" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="557" y="258" class="box-title">窗口编排</text>
+  <text x="557" y="286" class="small">工具条 / 弹窗 / 设置 / 置顶</text>
+
+  <rect x="865" y="225" width="300" height="90" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="887" y="258" class="box-title">划词控制器</text>
+  <text x="887" y="286" class="small">手势识别 · 权限 · 捕获流程</text>
+
+  <rect x="535" y="345" width="300" height="105" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="557" y="378" class="box-title">独立意图识别</text>
+  <text x="557" y="406" class="small">上下文压缩 + JSON 分类</text>
+  <text x="557" y="431" class="tiny">classifyIntent()</text>
+
+  <rect x="865" y="345" width="300" height="105" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="887" y="378" class="box-title">路由策略</text>
+  <text x="887" y="406" class="small">GLM 直答 / 本地 Agent / 禁用</text>
+  <text x="887" y="431" class="tiny">agentExec · localAgent · confidence</text>
+
+  <rect x="535" y="480" width="300" height="120" rx="14" class="blue"/>
+  <text x="557" y="513" class="box-title">GLM 流式适配器</text>
+  <text x="557" y="541" class="small">OpenAI-compatible /chat/completions</text>
+  <text x="557" y="570" class="tiny">thinking + reasoning_effort</text>
+
+  <rect x="865" y="480" width="300" height="120" rx="14" class="green"/>
+  <text x="887" y="513" class="box-title">本地 Agent Runner</text>
+  <text x="887" y="541" class="small">spawn Claude / Codex / ZCode</text>
+  <text x="887" y="570" class="tiny">stream-json · tool events · abort</text>
+
+  <rect x="535" y="630" width="630" height="105" rx="14" class="gray"/>
+  <text x="557" y="663" class="box-title">持久化与系统状态</text>
+  <text x="557" y="691" class="small">config.json / history.json / 登录项 / 权限状态</text>
+  <text x="557" y="719" class="tiny">store.ts · app.setLoginItemSettings</text>
+
+  <!-- External services -->
+  <rect x="180" y="825" width="520" height="165" rx="20" class="card"/>
+  <text x="210" y="865" class="zone">GLM / 服务端</text>
+  <rect x="210" y="890" width="460" height="70" rx="14" class="blue"/>
+  <text x="232" y="918" class="box-title">chat/completions</text>
+  <text x="232" y="944" class="small">主进程 fetch，流式回传 content / reasoning</text>
+
+  <rect x="1000" y="825" width="660" height="165" rx="20" class="card green"/>
+  <text x="1030" y="865" class="zone">本机 Agent 进程</text>
+  <rect x="1030" y="890" width="290" height="70" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="1052" y="918" class="box-title">claude -p</text>
+  <text x="1052" y="944" class="small">stream-json + tools</text>
+  <rect x="1350" y="890" width="290" height="70" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="1372" y="918" class="box-title">codex exec / zcode</text>
+  <text x="1372" y="944" class="small">Skill · MCP · Plugin</text>
+
+  <!-- Flow arrows -->
+  <path d="M245 505 L245 545" stroke="#57606a" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+  <text x="255" y="533" class="small">确认文本后弹出工具条</text>
+
+  <path d="M430 650 C520 650 560 610 625 610" stroke="#2f6bff" stroke-width="3" marker-end="url(#arrow-blue)" fill="none"/>
+  <text x="440" y="622" class="flow">tb:ask + quote</text>
+
+  <path d="M1258 335 L1215 350" stroke="#57606a" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+  <text x="1135" y="325" class="small">用户输入 / 附件 / 编辑</text>
+
+  <path d="M1135 400 C1080 415 1050 420 1010 415" stroke="#57606a" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+  <text x="1015" y="392" class="small">classify / chat / abort</text>
+
+  <path d="M835 397 L865 397" stroke="#2f6bff" stroke-width="3" marker-end="url(#arrow-blue)" fill="none"/>
+
+  <path d="M685 480 C700 780 480 900 700 900" stroke="#2f6bff" stroke-width="3" marker-end="url(#arrow-blue)" fill="none"/>
+  <text x="440" y="790" class="flow">流式请求 / SSE chunks</text>
+
+  <path d="M1165 480 C1180 700 930 905 1000 905" stroke="#188038" stroke-width="3" marker-end="url(#arrow-green)" fill="none"/>
+  <text x="985" y="790" class="flow">spawn / stream-json / tool events</text>
+
+  <path d="M835 540 C980 560 1090 600 1165 690" stroke="#188038" stroke-width="3" marker-end="url(#arrow-green)" fill="none"/>
+  <text x="900" y="545" class="small">上下文 + 执行权限</text>
+
+  <path d="M1215 385 L1258 375" stroke="#57606a" stroke-width="3" marker-end="url(#arrow)" fill="none"/>
+  <text x="1150" y="432" class="small">reasoning / content / tool / done</text>
+
+  <!-- Footnote -->
+  <text x="60" y="1035" class="small">Renderer 不直接持有服务端 Key；主进程负责请求、终止、本地 Agent 进程治理和配置持久化。</text>
+</svg>

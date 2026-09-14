@@ -632,7 +632,11 @@ function registerIpc() {
     store.saveSession(session)
     return true
   })
-  ipcMain.handle('ask:history-list', () => store.listSessions())
+  ipcMain.handle('ask:history-list', (e, payload: any = {}) => {
+    const offset = Math.max(0, Number(payload?.offset) || 0)
+    const limit = Math.min(200, Math.max(1, Number(payload?.limit) || 50))
+    return store.listSessions(offset, limit)
+  })
   ipcMain.handle('ask:history-get', (e, id) => store.getSession(id))
   ipcMain.handle('ask:history-del', (e, id) => {
     store.deleteSession(id)

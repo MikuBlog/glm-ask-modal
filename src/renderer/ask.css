@@ -145,6 +145,12 @@ button { font-family: inherit; }
 .history-item .hi-del:hover { background: #e8eaed; color: #d54941; }
 .history-item .hi-del .ic { width: 13px; height: 13px; }
 .history-empty { padding: 22px 0 26px; text-align: center; font-size: 13px; color: var(--sub); }
+.history-loading {
+  padding: 12px 0 18px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--sub);
+}
 
 /* ---------- 未配置 Key 提示 ---------- */
 .banner {
@@ -785,8 +791,6 @@ button { font-family: inherit; }
   background: transparent;
   max-height: 160px;
   padding: 2px 2px;
-  user-select: none;
-  -webkit-user-select: none;
 }
 #input::placeholder { color: #b0b6bf; }
 

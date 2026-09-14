@@ -350,6 +350,66 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
     return input.command || input.description || input.prompt || input.url || input.query || input.path
       || input.file_path || input.skill || input.name || JSON.stringify(input).slice(0, 300)
   }
+  function parseBalancedJSON(text: string): any {
+    const start = text.search(/[[{]/)
+    if (start < 0) return null
+    const open = text[start]
+    const close = open === '[' ? ']' : '}'
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]
+      if (inString) {
+        if (escaped) escaped = false
+        else if (ch === '\\') escaped = true
+        else if (ch === '"') inString = false
+        continue
+      }
+      if (ch === '"') inString = true
+      else if (ch === open) depth++
+      else if (ch === close) {
+        depth--
+        if (depth === 0) return JSON.parse(text.slice(start, i + 1))
+      }
+    }
+    return null
+  }
+
+  function truncateText(text: any, length = 520): string {
+    const value = String(text || '').replace(/\s+/g, ' ').trim()
+    return value.length > length ? `${value.slice(0, length)}…` : value
+  }
+
+  function formatToolResult(title: string, content: string): string {
+    const query = content.match(/Web search results for query:\s*["“]([^"”]+)["”]/i)?.[1]
+    const builtin = content.match(/Z\.ai Built-in Tool:\s*([^*\n]+)/i)?.[1]?.trim()
+    if (builtin && /webreader/i.test(builtin)) {
+      const url = content.match(/"url"\s*:\s*"([^"]+)"/i)?.[1]
+      const payloadText = content.slice(content.toLowerCase().indexOf('webreader_result_summary:'))
+      const payload = parseBalancedJSON(payloadText)
+      const node: any = Array.isArray(payload) ? payload[0] : payload
+      const resultText: any = node?.text || node
+      const summary = resultText?.description || resultText?.content || resultText?.summary
+      return [
+        `内嵌调用：Z.ai webReader`,
+        url ? `读取地址：${url}` : '',
+        resultText?.title ? `页面标题：${resultText.title}` : '',
+        summary ? `页面摘要：${truncateText(summary)}` : ''
+      ].filter(Boolean).join('\n')
+    }
+    if (builtin) {
+      return [
+        `内嵌调用：Z.ai ${builtin}`,
+        query ? `查询：${query}` : '',
+        truncateText(content)
+      ].filter(Boolean).join('\n')
+    }
+    return [
+      query ? `查询：${query}` : '',
+      truncateText(content)
+    ].filter(Boolean).join('\n')
+  }
   let buffer = ''
   child.stdout.on('data', chunk => {
     lastActivityAt = Date.now()
@@ -397,7 +457,7 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
             setToolState(block.tool_use_id, {
               state: block.is_error ? 'error' : 'done',
               finishedAt: Date.now(),
-              detail: content.slice(0, 900)
+              detail: formatToolResult(block.name || '工具调用', content)
             })
           }
         }

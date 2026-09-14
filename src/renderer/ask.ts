@@ -624,8 +624,13 @@ function upsertToolTrace(m, tool) {
 }
 
 function formatDuration(ms) {
-  const seconds = Math.max(0, Number(ms || 0) / 1000)
-  return seconds < 10 ? `${seconds.toFixed(1)} 秒` : `${Math.round(seconds)} 秒`
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000))
+  if (totalSeconds < 60) return `${totalSeconds} 秒`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes < 60) return `${minutes} 分 ${seconds} 秒`
+  const hours = Math.floor(minutes / 60)
+  return `${hours} 小时 ${minutes % 60} 分 ${seconds} 秒`
 }
 
 /* ---------------- 会话持久化 ---------------- */
@@ -702,6 +707,7 @@ async function send() {
   intentMsg.replyStartedAt = replyStartedAt
   session.messages.push(intentMsg)
   renderAll()
+  saveSession()
 
   intentPending = true
   updateSendBtn()
@@ -1560,19 +1566,22 @@ document.addEventListener('mousedown', e => {
 })
 
 /* ---------------- 历史 ---------------- */
-async function openHistory() {
-  syncDraft()
-  await saveSession()
-  const list = await window.askAPI.listHistory()
-  els.historyList.innerHTML = ''
-  if (!list.length) {
-    els.historyList.innerHTML = '<div class="history-empty">暂无历史话题</div>'
-  }
-  for (const s of list) {
+let historyOffset = 0
+let historyLimit = 50
+let historyTotal = 0
+let historyHasMore = false
+let historyLoading = false
+
+function formatHistoryTime(updatedAt: number) {
+  const d = new Date(updatedAt)
+  return `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function renderHistoryItems(items: any[]) {
+  for (const s of items) {
     const item = document.createElement('div')
     item.className = 'history-item'
-    const d = new Date(s.updatedAt)
-    const time = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    const time = formatHistoryTime(s.updatedAt)
     item.innerHTML = `<div class="hi-main"><div class="hi-title"></div><div class="hi-time">${time}</div></div>`
     item.querySelector('.hi-title').textContent = s.title || '新话题'
     const del = document.createElement('button')
@@ -1608,8 +1617,63 @@ async function openHistory() {
     item.appendChild(del)
     els.historyList.appendChild(item)
   }
+}
+
+function renderHistoryPlaceholder() {
+  if (!els.historyList.querySelector('.history-item')) {
+    els.historyList.innerHTML = '<div class="history-empty">暂无历史话题</div>'
+  } else {
+    els.historyList.querySelector('.history-loading')?.remove()
+  }
+}
+
+async function loadHistoryPage(reset = false) {
+  if (historyLoading) return
+  if (!reset && !historyHasMore) return
+  historyLoading = true
+  els.historyList.querySelector('.history-loading')?.remove()
+  const loading = document.createElement('div')
+  loading.className = 'history-loading'
+  loading.textContent = '加载中…'
+  els.historyList.appendChild(loading)
+
+  try {
+    const offset = reset ? 0 : historyOffset
+    const result = await window.askAPI.listHistory({ offset, limit: historyLimit })
+    if (reset) {
+      historyOffset = 0
+      historyTotal = result.total || 0
+      historyHasMore = !!result.hasMore
+      els.historyList.innerHTML = ''
+    }
+    renderHistoryItems(result.items || [])
+    historyOffset = offset + (result.items?.length || 0)
+    historyTotal = result.total || historyOffset
+    historyHasMore = !!result.hasMore
+  } finally {
+    historyLoading = false
+    els.historyList.querySelector('.history-loading')?.remove()
+    renderHistoryPlaceholder()
+  }
+}
+
+async function openHistory() {
+  syncDraft()
+  await saveSession()
+  historyLimit = 50
+  historyLoading = false
+  historyHasMore = false
+  await loadHistoryPage(true)
   els.historyPanel.classList.remove('hidden')
 }
+
+els.historyList.addEventListener('scroll', () => {
+  const el = els.historyList
+  if (!historyHasMore || historyLoading) return
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+    loadHistoryPage(false)
+  }
+})
 
 async function newTopic() {
   syncDraft()
@@ -1664,15 +1728,21 @@ els.input.addEventListener('paste', e => {
   }
 })
 
-// 输入框只作为编辑器使用，不允许在框内划词选中文字。
-els.input.addEventListener('selectstart', e => e.preventDefault())
-els.input.addEventListener('select', e => {
-  const input = e.target as HTMLTextAreaElement
-  input.setSelectionRange(input.value.length, input.value.length)
+// 输入框禁止鼠标划词选中；Cmd+A 等键盘全选/光标操作保留。
+let inputMouseSelecting = false
+els.input.addEventListener('mousedown', () => {
+  inputMouseSelecting = true
 })
 els.input.addEventListener('mouseup', e => {
   const input = e.target as HTMLTextAreaElement
   if (input.selectionStart !== input.selectionEnd) {
+    input.setSelectionRange(input.value.length, input.value.length)
+  }
+  inputMouseSelecting = false
+})
+els.input.addEventListener('select', e => {
+  const input = e.target as HTMLTextAreaElement
+  if (inputMouseSelecting && input.selectionStart !== input.selectionEnd) {
     input.setSelectionRange(input.value.length, input.value.length)
   }
 })
