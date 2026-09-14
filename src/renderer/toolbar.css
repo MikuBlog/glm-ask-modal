@@ -1,0 +1,109 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: transparent;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 渲染层把内容实际尺寸回报给主进程，窗口严格贴合内容；
+   豆包式浮层不使用大范围灰色投影，四周只保留极小的透明安全边距。 */
+body {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* 上弹出（menuDir=up）时，药丸贴底、菜单朝上 */
+body.up { flex-direction: column-reverse; }
+
+.pill {
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  height: 40px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2329;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.item:hover { background: #f2f3f5; }
+.item:active { background: #e8eaed; }
+.item .ic { width: 15px; height: 15px; color: #4e5969; flex: none; }
+.item.ask .ic { color: #3d74f6; }
+.item.ask span { font-weight: 600; }
+
+.divider {
+  width: 1px;
+  height: 14px;
+  background: #e5e6eb;
+  margin: 0 3px;
+  flex: none;
+}
+
+.more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #f2f3f5;
+  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex: none;
+}
+.more-btn:hover { background: #e8eaed; }
+.more-btn .ic { width: 15px; height: 15px; color: #4e5969; }
+
+/* 文本捕获进行中：轻微降透明度提示「就绪中」，按钮仍可点击 */
+.pill.pending .item, .pill.pending .more-btn { opacity: .72; }
+
+.dropdown {
+  margin-top: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+body.up .dropdown { margin-top: 0; margin-bottom: 8px; }
+
+.dropdown .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: #1f2329;
+  cursor: pointer;
+  text-align: left;
+}
+.dropdown .row:hover { background: #f2f3f5; }
+.dropdown .row .ic { width: 15px; height: 15px; color: #4e5969; flex: none; }
+.dropdown .sep { height: 1px; background: #eef0f2; margin: 4px 8px; }
+
+.hidden { display: none; }

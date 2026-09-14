@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="./settings.css" />
+</head>
+<body>
+  <h1>设置</h1>
+
+  <section>
+    <label class="lbl">API Key</label>
+    <div class="key-row">
+      <input id="api-key" type="password" placeholder="粘贴你的 GLM API Key（zhipu / bigmodel）" />
+      <button id="toggle-key" class="ghost">显示</button>
+    </div>
+    <p class="hint">GLM Coding Plan 的 API Key 也可以直接使用。Key 仅保存在本机 ~/Library/Application Support/GLM问问/config.json。</p>
+  </section>
+
+  <section>
+    <label class="lbl">接口地址</label>
+    <select id="base-select">
+      <option value="https://open.bigmodel.cn/api/paas/v4">智谱开放平台（默认）</option>
+      <option value="https://open.bigmodel.cn/api/coding/paas/v4">GLM Coding Plan（国内）</option>
+      <option value="https://api.z.ai/api/paas/v4">Z.ai 国际版</option>
+      <option value="https://api.z.ai/api/coding/paas/v4">Z.ai Coding Plan（国际）</option>
+      <option value="custom">自定义…</option>
+    </select>
+    <input id="base-custom" type="text" class="hidden" placeholder="https://..." />
+    <p class="hint">Coding Plan 套餐 Key 请选择「GLM Coding Plan」地址。</p>
+  </section>
+
+  <section>
+    <label class="lbl">模型</label>
+    <div id="model-list"></div>
+    <div class="add-row">
+      <input id="new-model" type="text" placeholder="添加模型 ID，如 glm-5.3" />
+      <button id="add-model" class="ghost">添加</button>
+    </div>
+    <p class="hint">默认模型即点击列表中「设为默认」的那个。默认 glm-5.3-flash。</p>
+  </section>
+
+  <section>
+    <div class="row-inline">
+      <label class="lbl">权限检测</label>
+      <button id="check-perm" class="ghost">检测辅助功能权限</button>
+      <button id="open-guide" class="ghost">权限引导</button>
+    </div>
+    <p id="perm-result" class="hint">划词工具条需要「辅助功能」权限（系统设置 → 隐私与安全性 → 辅助功能）。检测成功会立即启动划词，无需重启应用。</p>
+  </section>
+
+  <section>
+    <div class="row-inline">
+      <label class="lbl">禁用划词的应用</label>
+      <span class="hint">在这些应用中选中文本不会弹出工具条</span>
+    </div>
+    <div id="blacklist"></div>
+  </section>
+
+  <section>
+    <div class="row-inline">
+      <label class="lbl">快捷键</label>
+      <span id="hotkey-status" class="hint">Command + Shift + Space 打开 / 收起问一问窗口</span>
+    </div>
+    <div class="row-inline">
+      <label class="switch">
+        <input id="hotkey-enabled" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+      <span class="hint">启用全局快捷键</span>
+    </div>
+    <div class="row-inline">
+      <label class="switch">
+        <input id="open-at-login" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+      <span class="hint">登录 macOS 后自动在后台启动（不弹出问一问窗口）</span>
+    </div>
+  </section>
+
+  <div class="footer">
+    <span id="test-result"></span>
+    <span class="spacer"></span>
+    <button id="test-btn" class="ghost">测试连接</button>
+    <button id="save-btn" class="primary">保存</button>
+  </div>
+
+  <script src="./settings.js"></script>
+</body>
+</html>

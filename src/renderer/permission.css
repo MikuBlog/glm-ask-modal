@@ -1,0 +1,63 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #fff;
+  color: #1f2329;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.wrap { padding: 26px 30px 20px; display: flex; flex-direction: column; height: 100vh; }
+
+.icon {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: #eaf0fe;
+  color: #3d74f6;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+}
+.icon svg { width: 24px; height: 24px; }
+
+h1 { font-size: 17px; margin-bottom: 10px; }
+
+.desc { line-height: 1.7; color: #4e5969; margin-bottom: 10px; }
+
+.steps { margin: 0 0 16px 20px; color: #4e5969; line-height: 1.9; }
+
+.app {
+  font-weight: 600;
+  color: #1f2329;
+  background: #f5f6f7;
+  border-radius: 5px;
+  padding: 1px 6px;
+  margin: 0 2px;
+}
+
+.btns { display: flex; gap: 10px; align-items: center; }
+button { font-family: inherit; cursor: pointer; font-size: 13px; }
+button.primary {
+  border: none;
+  background: #3d74f6;
+  color: #fff;
+  border-radius: 9px;
+  padding: 9px 18px;
+  font-weight: 500;
+}
+button.primary:hover { opacity: .92; }
+button.ghost {
+  border: 1px solid #e5e6eb;
+  background: #fff;
+  color: #1f2329;
+  border-radius: 9px;
+  padding: 8px 16px;
+}
+button.ghost:hover { background: #f5f6f7; }
+button.subtle { border-color: transparent; color: #8a9099; }
+button:disabled { opacity: .55; cursor: default; }
+
+.status { margin-top: 12px; font-size: 12.5px; line-height: 1.6; }
+.status.ok { color: #16a34a; }
+.status.fail { color: #d54941; }

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="./toolbar.css" />
+</head>
+<body>
+  <div id="pill" class="pill">
+    <button class="item ask" data-act="ask" title="问一问">
+      <svg viewBox="0 0 24 24" class="ic accent"><path fill="currentColor" d="M12 2.5l2.1 5.7 5.7 2.1-5.7 2.1L12 18.1l-2.1-5.7-5.7-2.1 5.7-2.1L12 2.5z"/><path fill="currentColor" opacity=".55" d="M19 14l1.1 2.9L23 18l-2.9 1.1L19 22l-1.1-2.9L15 18l2.9-1.1L19 14z"/></svg>
+      <span>问问GLM</span>
+    </button>
+    <button class="item" data-act="summary" title="总结选中内容">
+      <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8L14 2.5z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 2.5V8h5.5M8.5 12.5h7M8.5 16h4.5"/></svg>
+      <span>总结</span>
+    </button>
+    <button class="item" data-act="copy" title="复制选中内容">
+      <svg viewBox="0 0 24 24" class="ic"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 15H4.5a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V5"/></svg>
+      <span>复制</span>
+    </button>
+    <button class="item" data-act="translate" title="翻译选中内容">
+      <svg viewBox="0 0 24 24" class="ic"><path fill="currentColor" d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+      <span>翻译</span>
+    </button>
+    <span class="divider"></span>
+    <button class="more-btn" data-act="more" title="更多">
+      <svg viewBox="0 0 24 24" class="ic"><circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/></svg>
+    </button>
+  </div>
+
+  <div id="dropdown" class="dropdown hidden">
+    <button class="row" data-act="explain">
+      <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.38 8.38 0 0 1-9 8.35 8.5 8.5 0 0 1-3.4-.7L3 20l.85-5.6A8.38 8.38 0 0 1 3 11.5a8.5 8.5 0 0 1 9-8.5 8.5 8.5 0 0 1 9 8.5z"/></svg>
+      <span>解释</span>
+    </button>
+    <div class="sep"></div>
+    <button class="row" data-act="disable">
+      <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6 6l12 12"/></svg>
+      <span id="disable-label">在此应用中禁用</span>
+    </button>
+    <button class="row" data-act="settings">
+      <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>更多设置...</span>
+    </button>
+  </div>
+
+  <script src="./toolbar.js"></script>
+</body>
+</html>

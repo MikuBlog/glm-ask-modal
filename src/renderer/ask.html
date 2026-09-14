@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="./ask.css" />
+</head>
+<body>
+  <!-- 标题栏 -->
+  <div id="titlebar">
+    <div class="tb-side">
+      <button id="btn-min" class="tbtn" title="最小化">
+        <svg viewBox="0 0 24 24" class="ic"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 12h12"/></svg>
+      </button>
+      <button id="btn-pin" class="tbtn" title="置顶">
+        <svg viewBox="0 0 24 24" class="ic"><path fill="currentColor" d="M14.2 2.6a1 1 0 0 0-1.7 0l-1 1.8a1 1 0 0 1-.6.48l-3.2.9a1.4 1.4 0 0 0-.98 1.06l-.2.98c-.1.5.34.95.85.9l3.9-.44 2.5 2.5-.44 3.9c-.06.51.4.95.9.85l.98-.2a1.4 1.4 0 0 0 1.06-.98l.9-3.2a1 1 0 0 1 .48-.6l1.8-1a1 1 0 0 0 0-1.74l-5.65-3.3z" transform="translate(1.5 1.5) scale(.85)"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 19.5l6-6"/></svg>
+      </button>
+    </div>
+    <div class="tb-drag"></div>
+    <div class="tb-side">
+      <button id="btn-new" class="tbtn" title="新话题">
+        <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </button>
+      <button id="btn-more" class="tbtn" title="更多">
+        <svg viewBox="0 0 24 24" class="ic"><circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="more-menu" class="menu hidden">
+    <button class="row" data-act="history">
+      <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 7v5l3 2"/></svg>
+      <span>历史话题</span>
+    </button>
+    <button class="row" data-act="settings">
+      <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>设置</span>
+    </button>
+    <div class="sep"></div>
+    <button class="row" data-act="quit">
+      <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      <span>退出 GLM问问</span>
+    </button>
+  </div>
+
+  <div id="history-panel" class="panel hidden">
+    <div class="panel-head">
+      <span>历史话题</span>
+      <button id="history-close" class="tbtn small">
+        <svg viewBox="0 0 24 24" class="ic"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="history-list" class="history-list"></div>
+  </div>
+
+  <div id="banner" class="banner hidden">
+    <span>尚未配置 API Key，填写后即可开始对话</span>
+    <button id="banner-btn">去设置</button>
+  </div>
+
+  <!-- 消息流 -->
+  <div id="scroll"><div id="thread"></div></div>
+
+  <!-- 划词迷你条（弹窗内追问） -->
+  <div id="selbar" class="mini hidden">
+    <button data-act="copy" title="复制">
+      <svg viewBox="0 0 24 24" class="ic"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 15H4.5a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V5"/></svg>
+      <span>复制</span>
+    </button>
+    <button data-act="ask" title="引用并追问">
+      <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 14L4 9l5-5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 9h10a6 6 0 0 1 6 6v4"/></svg>
+      <span>追问</span>
+    </button>
+  </div>
+
+  <!-- 输入区 -->
+  <div id="dock">
+    <div id="dock-card">
+      <div id="chips" class="hidden">
+        <div id="quote-chip" class="quote-chip hidden">
+          <span class="accent-bar"></span>
+          <span id="quote-text" class="quote-text"></span>
+          <button id="quote-clear" class="chip-x">
+            <svg viewBox="0 0 24 24" class="ic"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div id="attach-chips"></div>
+      </div>
+      <textarea id="input" rows="1" placeholder="发消息，或对选中的内容提问…"></textarea>
+      <div id="dockbar">
+        <button id="btn-plus" class="dbtn" title="添加图片或文件">
+          <svg viewBox="0 0 24 24" class="ic"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <span class="vbar"></span>
+        <div id="plus-menu" class="menu up hidden">
+          <button class="row" data-act="image">
+            <svg viewBox="0 0 24 24" class="ic"><rect x="3" y="3" width="18" height="18" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.8" cy="8.8" r="1.7" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 15.5l-4.5-4.5L6 20.5"/></svg>
+            <span>上传图片</span>
+          </button>
+          <button class="row" data-act="file">
+            <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8L14 2.5z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 2.5V8h5.5"/></svg>
+            <span>上传文件</span>
+          </button>
+        </div>
+        <span class="spacer"></span>
+        <button id="btn-agent" class="dbtn" title="优先复用本机 Agent 能力（Skill / MCP / Plugin）">
+          <svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 3.5v5c0 4.2-2.9 7.8-7 9.5-4.1-1.7-7-5.3-7-9.5v-5z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9.5 12l1.8 1.8L15 10"/></svg>
+          <svg viewBox="0 0 24 24" class="ic chev"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="agent-menu" class="menu up hidden"></div>
+        <button id="btn-model" class="dbtn wide" title="切换模型">
+          <span id="model-label">GLM-5.3-Flash</span>
+          <svg viewBox="0 0 24 24" class="ic chev"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="model-menu" class="menu up hidden"></div>
+        <button id="btn-effort" class="dbtn wide effort" title="推理强度">
+          <svg viewBox="0 0 24 24" class="ic brain"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M12 4a3.2 3.2 0 0 0-3.2 3.2c-1.6.4-2.8 1.8-2.8 3.6 0 .9.3 1.7.8 2.3-.3.5-.5 1.1-.5 1.8A3.1 3.1 0 0 0 9.4 18c.5 1.2 1.5 2 2.6 2V4z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M12 4a3.2 3.2 0 0 1 3.2 3.2c1.6.4 2.8 1.8 2.8 3.6 0 .9-.3 1.7-.8 2.3.3.5.5 1.1.5 1.8a3.1 3.1 0 0 1-3.1 3.1c-.5 1.2-1.5 2-2.6 2V4z"/></svg>
+          <span id="effort-label">最高</span>
+          <svg viewBox="0 0 24 24" class="ic chev"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="effort-menu" class="menu up hidden"></div>
+        <button id="btn-send" class="send disabled" title="发送">
+          <svg viewBox="0 0 24 24" class="ic send-arrow"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <svg viewBox="0 0 24 24" class="ic send-stop hidden"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="img-input" accept="image/*" multiple hidden />
+  <input type="file" id="file-input" hidden />
+  <div id="image-menu" class="menu hidden">
+    <button class="row" data-act="preview"><span>打开预览</span></button>
+    <button class="row" data-act="copy"><span>复制图片</span></button>
+  </div>
+  <div id="image-preview" class="overlay hidden">
+    <img id="preview-img" alt="图片预览" />
+    <button id="preview-close" title="关闭">
+      <svg viewBox="0 0 24 24" class="ic"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div id="toast" class="hidden"></div>
+
+  <script src="./vendor/marked.min.js"></script>
+  <script src="./vendor/purify.min.js"></script>
+  <script src="./ask.js"></script>
+</body>
+</html>
