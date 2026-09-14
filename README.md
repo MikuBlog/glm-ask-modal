@@ -8,6 +8,7 @@
 
 ![划词工具条](docs/screenshots/selection-toolbar.png)
 ![引用追问与 Markdown 回复](docs/screenshots/chat-quote.png)
+![Agent 执行链路](docs/screenshots/agent-trace.png)
 ![流式回复与 HTML 渲染](docs/screenshots/chat.png)
 ![设置页](docs/screenshots/settings.png)
 
@@ -24,6 +25,8 @@
 | 重新生成 | 助手消息下方 ↻ 图标，重发同一轮对话 |
 | 图片 / 文件 | 输入框 `+` 上传图片（多模态，最多 6 张）与任意文件（≤10MB；文本内容随消息发送，二进制文件可将本地路径交给本地 Agent 处理）；支持直接粘贴图片 |
 | 思考过程 | 支持模型的 `reasoning_content`，折叠展示，内容开始输出后自动收起 |
+| Agent 执行链路 | 独立模型识别意图；执行过程、工具调用、状态圆点和结果详情按层级展示 |
+| 回复耗时 | 每次回复完成后展示总耗时，包含意图识别与 Agent / GLM 执行阶段 |
 | 新话题 / 历史 | 标题栏 ✏️ 新开话题；「⋯ → 历史话题」查看/恢复/删除近 50 个会话 |
 | 模型切换 | 输入框右下角模型名点击切换；设置页可增删模型、设默认 |
 | 本地 Agent 复用 | 自动发现 ZCode / Claude Code / Codex 本地的 Skill、MCP、Plugin；GLM 回答会优先命中这些能力，也可从输入框盾牌菜单把任务交给本地 Agent headless 执行 |
@@ -38,7 +41,7 @@
 ### 方式一：下载 Release
 
 1. 打开仓库的 [Releases](../../releases) 页面。
-2. 下载 `GLM-Ask-0.1.1-arm64-mac.zip` 或 `GLM-Ask-0.1.1-arm64.dmg`。
+2. 下载 `GLM-Ask-0.1.2-arm64-mac.zip` 或 `GLM-Ask-0.1.2-arm64.dmg`。
 3. 将 `GLM问问.app` 拖到 `/Applications`。
 4. 首次打开时右键 App → 「打开」，确认一次 Gatekeeper 提示。
 5. 打开设置，填入 GLM API Key 并保存。

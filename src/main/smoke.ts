@@ -60,7 +60,15 @@ module.exports = function runSmoke(deps) {
         },
         {
           id: 'd2', role: 'assistant', done: true,
-          reasoning: '用户访问了数组越界的元素 arr[3]，数组长度为 3，最大下标是 2。',
+          reasoning: '意图识别：这是一个代码问题，可直接分析。\n已路由到本机 Agent（自动选择），正在调用 Skill / MCP / CLI…\n用户访问了数组越界的元素 arr[3]，数组长度为 3，最大下标是 2。',
+          reasoningDone: true,
+          reasoningCollapsed: true,
+          tools: [
+            { id: 'intent', title: '意图识别 · glm-5.3-flash', state: 'done', detail: 'GLM 直答；置信度 92%；代码分析无需本机工具。' },
+            { id: 'tool-1', title: 'Read', state: 'done', detail: 'const arr = [1,2,3]\nconsole.log(arr[3])' },
+            { id: 'tool-2', title: 'Bash', state: 'done', detail: 'node -e "console.log([1,2,3][3])"\n# undefined' }
+          ],
+          durationMs: 18200,
           text: '这段代码会输出 `undefined`，**不会报错**。\n\n## 原因\n\nJavaScript 中访问超出数组长度的下标不会抛出异常，而是返回 `undefined`：\n\n```js\nconst arr = [1, 2, 3]\nconsole.log(arr.length) // 3\nconsole.log(arr[3])     // undefined\n```\n\n## 建议\n\n- 访问前先判断下标：`if (i < arr.length)`\n- 或使用 `arr.at(3)` 同样返回 `undefined`\n- 需要报错提醒时可以用类型检查或断言库'
         }
         ,
@@ -98,6 +106,15 @@ module.exports = function runSmoke(deps) {
     await askWin.webContents.executeJavaScript("document.querySelector('#scroll').scrollTo(0,0)")
     await sleep(300)
     await snap('ask-top', askWin)
+    // 展开一条工具链路，为 README 生成最新交互示例。
+    await askWin.webContents.executeJavaScript(`(() => {
+      const group = document.querySelector('.tool-trace')
+      if (group) group.open = true
+      const item = document.querySelector('.tool-item')
+      if (item) item.open = true
+    })()`)
+    await sleep(300)
+    await snap('agent-trace', askWin)
     out.steps.push('ask alwaysOnTop(置顶): ' + (askWin.isAlwaysOnTop() ? 'OK' : 'FAIL'))
 
     try {

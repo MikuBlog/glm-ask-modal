@@ -301,7 +301,8 @@ function showAskOnActiveSpace() {
 function openAsk(payload = {}) {
   const win = ensureAsk()
   const send = () => {
-    win.__ready && win.webContents.send('ask:init', { ...payload, config: askCfgSnapshot(), hookFailed, hotkeyConflict })
+    const config = (payload as any).config || askCfgSnapshot()
+    win.__ready && win.webContents.send('ask:init', { ...payload, config, hookFailed, hotkeyConflict })
   }
   if (win.__ready && !win.isVisible()) {
     showAskOnActiveSpace()
