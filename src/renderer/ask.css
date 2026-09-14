@@ -344,9 +344,13 @@ button { font-family: inherit; }
 }
 .rs-head:hover { color: #4e5969; }
 .rs-head .chev { width: 12px; height: 12px; transition: transform .15s; }
+.rs-label {
+  flex: none;
+  white-space: nowrap;
+}
 .reasoning.collapsed .chev { transform: rotate(-90deg); }
 .rs-preview {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   margin-left: 8px;
   overflow: hidden;
@@ -752,6 +756,8 @@ button { font-family: inherit; }
   background: transparent;
   max-height: 160px;
   padding: 2px 2px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 #input::placeholder { color: #b0b6bf; }
 

@@ -480,12 +480,14 @@ function buildActions(m, idx) {
 
 function buildReasoning(m) {
   const box = document.createElement('div')
-  const collapsed = m.reasoningCollapsed !== false
+  if (m.reasoningCollapsed === undefined) m.reasoningCollapsed = true
+  const collapsed = m.reasoningCollapsed
   const reasoningActive = !m.reasoningDone && !m.done && !m.__started && !m.text
   box.className = `reasoning ${reasoningActive ? 'reasoning-active' : 'reasoning-completed'}${collapsed ? ' collapsed' : ''}`
   const head = document.createElement('button')
+  head.type = 'button'
   head.className = 'rs-head'
-  head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span>思考过程</span><span class="rs-preview"></span>`
+  head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span class="rs-label">思考过程</span><span class="rs-preview"></span>`
   head.onclick = () => {
     m.reasoningCollapsed = !m.reasoningCollapsed
     box.classList.toggle('collapsed', m.reasoningCollapsed)
@@ -1643,6 +1645,19 @@ els.input.addEventListener('paste', e => {
       }
       reader.readAsDataURL(file)
     })
+  }
+})
+
+// 输入框只作为编辑器使用，不允许在框内划词选中文字。
+els.input.addEventListener('selectstart', e => e.preventDefault())
+els.input.addEventListener('select', e => {
+  const input = e.target as HTMLTextAreaElement
+  input.setSelectionRange(input.value.length, input.value.length)
+})
+els.input.addEventListener('mouseup', e => {
+  const input = e.target as HTMLTextAreaElement
+  if (input.selectionStart !== input.selectionEnd) {
+    input.setSelectionRange(input.value.length, input.value.length)
   }
 })
 
