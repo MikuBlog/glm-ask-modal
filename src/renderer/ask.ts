@@ -497,16 +497,22 @@ function buildReasoning(m) {
   const body = document.createElement('div')
   body.className = 'rs-body'
   body.textContent = m.reasoning
-  const latestLine = latestReasoningLine(m.reasoning)
-  head.querySelector('.rs-preview').textContent = latestLine
+  const latestSentence = latestReasoningSentence(m.reasoning)
+  head.querySelector('.rs-preview').textContent = latestSentence
   box.appendChild(head)
   box.appendChild(body)
   return box
 }
 
-function latestReasoningLine(reasoning: any) {
-  const lines = String(reasoning || '').split(/\r?\n/)
-  return lines[lines.length - 1]?.trim() || lines.find(line => line.trim())?.trim() || '正在思考…'
+function latestReasoningSentence(reasoning: any) {
+  // 先把换行当作句子边界，再按中英文常见句读切分；
+  // 最后一段即使还没说完，也保留出来用于流式展示。
+  const parts = String(reasoning || '')
+    .replace(/\r\n?/g, '\n')
+    .split(/(?:[。！？!?；;]+|\n)+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+  return parts.at(-1) || '正在思考…'
 }
 
 function buildToolTrace(m) {
@@ -762,7 +768,7 @@ async function respond(delegated = false, existing = null) {
     m.reasoning = m.reasoning ? `${m.reasoning}\n${routeNote}` : routeNote
     m.__rsPainted = true
     const preview = els.thread.querySelector(`[data-id="${m.id}"] .rs-preview`)
-    if (preview) preview.textContent = latestReasoningLine(m.reasoning)
+    if (preview) preview.textContent = latestReasoningSentence(m.reasoning)
   }
   updateSendBtn()
   hideSelbar()
@@ -796,8 +802,8 @@ async function respond(delegated = false, existing = null) {
           if (box) {
             const preview = box.querySelector('.rs-preview')
             const body = box.querySelector('.rs-body')
-            const latestLine = latestReasoningLine(m.reasoning)
-            if (preview) preview.textContent = latestLine
+            const latestSentence = latestReasoningSentence(m.reasoning)
+            if (preview) preview.textContent = latestSentence
             if (body) body.textContent = m.reasoning
             const stick = nearBottom()
             stickScroll(stick)
