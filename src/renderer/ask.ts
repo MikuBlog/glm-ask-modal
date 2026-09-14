@@ -480,7 +480,8 @@ function buildActions(m, idx) {
 
 function buildReasoning(m) {
   const box = document.createElement('div')
-  box.className = 'reasoning' + (m.reasoningCollapsed ? ' collapsed' : '')
+  const collapsed = m.reasoningCollapsed !== false
+  box.className = 'reasoning' + (collapsed ? ' collapsed' : '')
   const head = document.createElement('button')
   head.className = 'rs-head'
   head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span>思考过程</span>`
@@ -491,7 +492,12 @@ function buildReasoning(m) {
   const body = document.createElement('div')
   body.className = 'rs-body'
   body.textContent = m.reasoning
+  const preview = document.createElement('div')
+  preview.className = 'rs-preview'
+  const latestLine = String(m.reasoning || '').split(/\r?\n/).filter(line => line.trim()).pop() || ''
+  preview.textContent = latestLine
   box.appendChild(head)
+  box.appendChild(preview)
   box.appendChild(body)
   return box
 }
@@ -776,10 +782,14 @@ async function respond(delegated = false, existing = null) {
           paint(true)
         } else {
           // 增量更新思考文本，不重建整个节点
-          const box = els.thread.querySelector(`[data-id="${m.id}"] .rs-body`)
+          const box = els.thread.querySelector(`[data-id="${m.id}"] .reasoning`)
           if (box) {
+            const preview = box.querySelector('.rs-preview')
+            const body = box.querySelector('.rs-body')
+            const latestLine = m.reasoning.split(/\r?\n/).filter(line => line.trim()).pop() || ''
+            if (preview) preview.textContent = latestLine
+            if (body) body.textContent = m.reasoning
             const stick = nearBottom()
-            box.textContent = m.reasoning
             stickScroll(stick)
           }
       }

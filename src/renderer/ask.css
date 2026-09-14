@@ -345,6 +345,15 @@ button { font-family: inherit; }
 .rs-head:hover { color: #4e5969; }
 .rs-head .chev { width: 12px; height: 12px; transition: transform .15s; }
 .reasoning.collapsed .chev { transform: rotate(-90deg); }
+.rs-preview {
+  padding: 0 14px 7px;
+  font-size: 13px;
+  line-height: 22px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .rs-body {
   padding: 2px 14px 10px;
   font-size: 13px;
@@ -353,6 +362,7 @@ button { font-family: inherit; }
   white-space: pre-wrap;
 }
 .reasoning.collapsed .rs-body { display: none; }
+.reasoning:not(.collapsed) .rs-preview { display: none; }
 
 /* Agent / Skill / MCP 调用链路 */
 .tool-trace {
