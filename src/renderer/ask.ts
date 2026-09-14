@@ -484,10 +484,12 @@ function buildReasoning(m) {
   const collapsed = m.reasoningCollapsed
   const reasoningActive = !m.reasoningDone && !m.done && !m.__started && !m.text
   box.className = `reasoning ${reasoningActive ? 'reasoning-active' : 'reasoning-completed'}${collapsed ? ' collapsed' : ''}`
+  const reasoningState = reasoningActive ? 'running' : 'done'
+  const reasoningStatusText = reasoningActive ? '思考中' : '已完成'
   const head = document.createElement('button')
   head.type = 'button'
   head.className = 'rs-head'
-  head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span class="rs-label">思考过程</span><span class="rs-preview"></span>`
+  head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span class="rs-label">思考过程</span><span class="rs-status ${reasoningState}">${reasoningStatusText}</span><span class="rs-preview"></span>`
   head.onclick = () => {
     m.reasoningCollapsed = !m.reasoningCollapsed
     box.classList.toggle('collapsed', m.reasoningCollapsed)
