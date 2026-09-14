@@ -265,7 +265,12 @@ function showAskOnActiveSpace() {
   setTimeout(() => {
     try {
       if (token !== askShowToken) return
-      if (!win.isVisible()) win.showInactive()
+      // showInactive() 在 macOS 上可能让 panel 留在原来所在的 Space；
+      // 热键唤起必须显式显示并聚焦到当前 Space。
+      if (!win.isVisible()) {
+        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        win.show()
+      }
       debugLog('ask shown', { token, visible: win.isVisible() })
       win.focus()
       if (win.__restoreSavedSize) {
