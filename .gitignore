@@ -12,3 +12,7 @@ yarn-error.log*
 .v2c/
 .video_agent/
 .mimosa/
+
+__pycache__/
+*.pyc
+src/native/selected-text
