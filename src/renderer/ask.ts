@@ -482,7 +482,9 @@ function buildReasoning(m) {
   const box = document.createElement('div')
   if (m.reasoningCollapsed === undefined) m.reasoningCollapsed = true
   const collapsed = m.reasoningCollapsed
-  const reasoningActive = !m.reasoningDone && !m.done && !m.__started && !m.text
+  // 本地 Agent 的 thinking / 正文 / 工具调用可能交替出现；
+  // 只要又收到 thinking，就重新进入“思考中”状态。
+  const reasoningActive = !m.reasoningDone && !m.done
   box.className = `reasoning ${reasoningActive ? 'reasoning-active' : 'reasoning-completed'}${collapsed ? ' collapsed' : ''}`
   const reasoningState = reasoningActive ? 'running' : 'done'
   const reasoningStatusText = reasoningActive ? '思考中' : '已完成'
@@ -792,6 +794,7 @@ async function respond(delegated = false, existing = null) {
       m.__waitingShown = false
       if (ev.type === 'reasoning') {
         m.reasoning = (m.reasoning || '') + ev.text
+        m.reasoningDone = false
         if (!m.__rsPainted) {
           m.__rsPainted = true
           if (m.reasoning) m.reasoning += '\n'
