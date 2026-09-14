@@ -1,3 +1,4 @@
+;(function () {
 const pillEl = document.getElementById('pill')
 const dropdown = document.getElementById('dropdown')
 const disableLabel = document.getElementById('disable-label')
@@ -67,3 +68,4 @@ window.tbAPI.onPayload(p => {
 })
 
 reportFit()
+})();

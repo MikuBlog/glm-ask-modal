@@ -1,14 +1,17 @@
 {
   "name": "glm-ask-modal",
   "productName": "GLM问问",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "豆包风格的划词问答 Mac 应用，接入 GLM Coding Plan API",
-  "main": "src/main/main.js",
+  "main": "dist/main/main.js",
   "scripts": {
-    "postinstall": "node scripts/vendor.js",
-    "start": "electron .",
-    "smoke": "GLM_ASK_SMOKE=1 electron .",
-    "dist": "electron-builder"
+    "postinstall": "npm run build",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && GLM_ASK_SMOKE=1 electron .",
+    "dist": "npm run build && electron-builder",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run clean && tsc -p tsconfig.json && node dist/scripts/vendor.js"
   },
   "dependencies": {
     "dompurify": "^3.2.0",
@@ -16,8 +19,10 @@
     "uiohook-napi": "^1.5.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.2",
     "electron": "^37.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "typescript": "^5.9.3"
   },
   "build": {
     "appId": "com.glm.ask",
@@ -27,14 +32,17 @@
       "output": "release"
     },
     "files": [
-      "src/**/*",
+      "dist/**/*",
       "package.json"
     ],
     "asarUnpack": [
-      "src/native/selected-text"
+      "dist/native/selected-text"
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "identity": null,
       "category": "public.app-category.productivity"
     }

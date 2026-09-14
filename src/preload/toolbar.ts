@@ -9,3 +9,5 @@ contextBridge.exposeInMainWorld('tbAPI', {
   disableApp: () => ipcRenderer.send('tb:disable'),
   openSettings: () => ipcRenderer.send('tb:settings')
 })
+
+export {}

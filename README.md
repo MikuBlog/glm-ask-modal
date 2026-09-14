@@ -2,7 +2,7 @@
 
 对齐豆包桌面端的划词交互：**任意应用中选中文字 → 弹出工具条 → 「问问GLM」打开弹窗 → 基于选中内容持续对话**。接入你自己的 GLM API Key（GLM Coding Plan 套餐 Key 可直接使用），默认模型 `glm-5.3-flash`，支持切换模型。
 
-![技术栈](https://img.shields.io/badge/Electron-37-blue) ![平台](https://img.shields.io/badge/macOS-14%2B-lightgrey)
+![技术栈](https://img.shields.io/badge/Electron-37-blue) ![语言](https://img.shields.io/badge/TypeScript-5-blue) ![平台](https://img.shields.io/badge/macOS-14%2B-lightgrey)
 
 ## 产品预览
 
@@ -38,7 +38,7 @@
 ### 方式一：下载 Release
 
 1. 打开仓库的 [Releases](../../releases) 页面。
-2. 下载 `GLM-Ask-0.1.0-arm64-mac.zip` 或 `GLM-Ask-0.1.0-arm64.dmg`。
+2. 下载 `GLM-Ask-0.1.1-arm64-mac.zip` 或 `GLM-Ask-0.1.1-arm64.dmg`。
 3. 将 `GLM问问.app` 拖到 `/Applications`。
 4. 首次打开时右键 App → 「打开」，确认一次 Gatekeeper 提示。
 5. 打开设置，填入 GLM API Key 并保存。
@@ -69,10 +69,14 @@ npm start
 
 设置页提供「检测辅助功能权限」一键自查（检测以本进程能否创建事件钩子为准，结果准确）与「权限引导」窗口入口。未授权时 `Command+Shift+Space` 唤起的弹窗仍可正常手动使用。
 
-## 打包
+## 开发与打包
 
 ```bash
-npm run dist        # 产物在 release/ 下（dmg + zip，arm64）
+npm install         # 安装依赖、生成静态资源、编译原生助手
+npm run typecheck   # TypeScript 类型检查
+npm start           # 构建并启动开发版
+npm run smoke       # 构建并运行 UI 自检
+npm run dist        # 构建并产出 release/ 下的 dmg + zip（arm64）
 ```
 
 ## 选中文本的获取方式
@@ -89,18 +93,20 @@ npm run dist        # 产物在 release/ 下（dmg + zip，arm64）
 ```
 src/
   main/
-    main.js        # 窗口编排、IPC、划词流程
-    selection.js   # 全局鼠标手势 + 选中文本捕获（AX 助手 / Cmd+C 兜底）
-    llm.js         # GLM OpenAI 兼容端点流式调用（主进程转发，可终止）
-    localAgents.js # 本机 ZCode / Claude / Codex 的 Skill、MCP、Plugin 发现与复用
-    store.js       # 配置与会话历史持久化（userData 下 JSON）
-    smoke.js       # 自检：示例数据渲染 + 截图（GLM_ASK_SMOKE=1）
+    main.ts        # 窗口编排、IPC、划词流程
+    selection.ts   # 全局鼠标手势 + 选中文本捕获（AX 助手 / Cmd+C 兜底）
+    llm.ts         # GLM OpenAI 兼容端点流式调用（主进程转发，可终止）
+    localAgents.ts # 本机 ZCode / Claude / Codex 的 Skill、MCP、Plugin 发现与复用
+    store.ts       # 配置与会话历史持久化（userData 下 JSON）
+    smoke.ts       # 自检：示例数据渲染 + 截图（GLM_ASK_SMOKE=1）
   native/
     get_selected_text.swift   # 可选原生划词助手
   preload/         # contextBridge API（toolbar / ask / settings）
-  renderer/        # 三个窗口的 UI（原生 HTML/CSS/JS，marked + DOMPurify）
-scripts/vendor.js  # 拷贝渲染层依赖 + 编译原生助手
+  renderer/        # 三个窗口的 UI（原生 HTML/CSS + TypeScript，marked + DOMPurify）
+  scripts/vendor.ts # 拷贝渲染层依赖 + 编译原生助手
 ```
+
+TypeScript 源码编译到 `dist/`；`dist/` 与原生助手产物不入库。
 
 ## 端到端回归测试
 

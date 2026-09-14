@@ -7,3 +7,5 @@ app.whenReady().then(() => {
   w.once('ready-to-show', () => { console.log('ready-to-show, showing'); w.show() })
   setTimeout(() => { console.log('visible:', w.isVisible(), 'bounds:', JSON.stringify(w.getBounds())) }, 2000)
 })
+
+export {}

@@ -151,3 +151,5 @@ async function testConnection({ baseUrl, apiKey, model }) {
 }
 
 module.exports = { stream, abort, complete, testConnection }
+
+export {}

@@ -9,7 +9,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 module.exports = function runSmoke(deps) {
   const { openAsk, showToolbar, openSettings, checkAccessibility, openPermissionGuide, localAgentsSummary } = deps
   const dir = '/tmp/glm-ask-smoke'
-  const out = { steps: [], pngs: {} }
+  const out: any = { steps: [], pngs: {}, failed: false }
 
   // 兜底强退
   setTimeout(() => { app.exit(0) }, 45000).unref()
@@ -221,3 +221,5 @@ module.exports = function runSmoke(deps) {
     }
   }
 }
+
+export {}

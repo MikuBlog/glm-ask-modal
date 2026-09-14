@@ -10,3 +10,5 @@ contextBridge.exposeInMainWorld('cfgAPI', {
   closeWindow: () => ipcRenderer.send('perm:close'),
   openGuide: () => ipcRenderer.send('perm:open-guide')
 })
+
+export {}

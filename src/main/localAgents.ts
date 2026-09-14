@@ -45,15 +45,15 @@ function findCli(name) {
   return dirs.map(d => path.join(d, name)).find(p => exists(p))
 }
 
-function safeReadJson(p) {
+function safeReadJson(p: string): any {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
 }
 
-function frontmatter(text) {
+function frontmatter(text: string): any {
   const m = String(text || '').match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!m) return {}
-  const out = {}
-  let current = null
+  const out: any = {}
+  let current: any = null
   for (const line of m[1].split(/\r?\n/)) {
     if (/^description\s*:\s*\|/.test(line)) { current = 'description'; out.description = ''; continue }
     const kv = line.match(/^([A-Za-z_-]+)\s*:\s*(.*)$/)
@@ -67,7 +67,7 @@ function frontmatter(text) {
   return out
 }
 
-function discoverSkills(agent, root, out) {
+function discoverSkills(agent: string, root: string, out: any[]) {
   let entries = []
   try { entries = fs.readdirSync(root, { withFileTypes: true }) } catch { return }
   for (const ent of entries) {
@@ -88,9 +88,9 @@ function discoverSkills(agent, root, out) {
   }
 }
 
-function parseTomlSections(text) {
+function parseTomlSections(text: string): any[] {
   const sections = []
-  let current = null
+  let current: any = null
   for (const rawLine of String(text || '').split(/\r?\n/)) {
     const line = rawLine.trim()
     if (!line || line.startsWith('#')) continue
@@ -112,7 +112,7 @@ function tomlArray(value) {
   try { return JSON.parse(value.replace(/"/g, '"')) } catch { return [] }
 }
 
-function discoverCodex(out) {
+function discoverCodex(out: any) {
   const cfgPath = path.join(home, '.codex/config.toml')
   if (!exists(cfgPath)) return
   const sections = parseTomlSections(fs.readFileSync(cfgPath, 'utf8'))
@@ -137,11 +137,11 @@ function discoverCodex(out) {
 
 function unquote(v) { return String(v || '').replace(/^["']|["']$/g, '') }
 
-function collectMcpJson(obj, source, out) {
+function collectMcpJson(obj: any, source: string, out: any) {
   if (!obj || typeof obj !== 'object') return
   const servers = obj.mcpServers || obj.mcp_servers
   if (servers && typeof servers === 'object') {
-    for (const [id, cfg] of Object.entries(servers)) {
+    for (const [id, cfg] of Object.entries(servers) as [string, any][]) {
       if (cfg?.enabled === false || out.some(x => x.id === id)) continue
       out.mcps.push({ id, name: id, agent: source, command: cfg?.command || '', args: Array.isArray(cfg?.args) ? cfg.args : [] })
     }
@@ -345,7 +345,7 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
     emitTool(next)
     return next
   }
-  const describeToolInput = (input = {}) => {
+  const describeToolInput = (input: any = {}) => {
     if (typeof input === 'string') return input
     return input.command || input.description || input.prompt || input.url || input.query || input.path
       || input.file_path || input.skill || input.name || JSON.stringify(input).slice(0, 300)
@@ -475,3 +475,5 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
 function abort(child) {
   try { child?.kill('TERM') } catch {}
 }
+
+export {}

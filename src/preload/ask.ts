@@ -26,3 +26,5 @@ contextBridge.exposeInMainWorld('askAPI', {
   deleteHistory: id => ipcRenderer.invoke('ask:history-del', id),
   pick: kind => ipcRenderer.invoke('ask:pick', kind)
 })
+
+export {}

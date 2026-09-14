@@ -81,3 +81,5 @@ function deleteSession(id) {
 }
 
 module.exports = { loadConfig, saveConfig, listSessions, saveSession, getSession, deleteSession }
+
+export {}

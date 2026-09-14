@@ -1,3 +1,4 @@
+;(function () {
 const $ = s => document.querySelector(s)
 const els = {
   apiKey: $('#api-key'),
@@ -172,3 +173,4 @@ $('#save-btn').onclick = async () => {
 }
 
 load()
+})();

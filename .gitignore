@@ -1,5 +1,6 @@
 .DS_Store
 node_modules/
+dist/
 release/
 dist/
 coverage/
@@ -12,6 +13,7 @@ yarn-error.log*
 .v2c/
 .video_agent/
 .mimosa/
+src/renderer/vendor/
 
 __pycache__/
 *.pyc

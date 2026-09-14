@@ -1,3 +1,4 @@
+;(function () {
 const els = {
   targetApp: document.getElementById('target-app'),
   targetApp2: document.getElementById('target-app2'),
@@ -45,3 +46,4 @@ els.recheck.onclick = async () => {
 els.later.onclick = () => window.cfgAPI.closeWindow()
 
 init()
+})();

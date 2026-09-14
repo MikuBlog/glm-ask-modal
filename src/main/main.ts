@@ -45,6 +45,7 @@ let hotkeyConflict = false
 let spaceObserverId = null
 let askShowToken = 0
 let askResizeTimer = null
+let filePickerCount = 0
 app.isQuitting = false
 
 const TOOLBAR_W = 480
@@ -405,6 +406,9 @@ function startSelectionFlow() {
     },
     onHotkeyKeys: () => toggleAsk(),
     onPress: pt => {
+      // macOS 文件选择器可能在主窗口边界外；全局鼠标钩子会把对话框内的
+      // 点击误判为“点击弹窗外部”，选文件期间必须禁止隐藏主弹窗。
+      if (filePickerCount > 0) return
       if (zoneAt(pt) !== 'toolbar') hideToolbar()
       // 武装 3 秒后的点击 = 已进入标注/完成阶段，解除抑制
       if (screenshotArmed && Date.now() - screenshotArmedAt > 3000) screenshotArmed = false
@@ -630,56 +634,71 @@ function registerIpc() {
   })
   ipcMain.handle('ask:pick', async (e, kind) => {
     const win = BrowserWindow.fromWebContents(e.sender)
-    if (kind === 'image') {
+    filePickerCount++
+    try {
+      if (kind === 'image') {
+        const r = await dialog.showOpenDialog(win, {
+          title: '选择图片',
+          modal: true,
+          filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+          properties: ['openFile', 'multiSelections']
+        })
+        if (r.canceled || !r.filePaths.length) return { ok: false }
+
+        const images = []
+        for (const p of r.filePaths.slice(0, 6)) {
+          try {
+            const stat = fs.statSync(p)
+            if (stat.size > 10 * 1024 * 1024) {
+              return { ok: false, error: '文件需小于 10MB：' + path.basename(p) }
+            }
+            const mime = {
+              '.png': 'image/png',
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.gif': 'image/gif',
+              '.webp': 'image/webp',
+              '.bmp': 'image/bmp'
+            }[path.extname(p).toLowerCase()] || 'image/png'
+            images.push(`data:${mime};base64,${fs.readFileSync(p).toString('base64')}`)
+          } catch (err) {
+            return { ok: false, error: err.message }
+          }
+        }
+        return { ok: true, images }
+      }
+
+      // 所有附件统一限制 10MB；文本内容随消息发送，二进制文件保留路径给 Agent。
       const r = await dialog.showOpenDialog(win, {
-        title: '选择图片',
+        title: '选择文件',
         modal: true,
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
         properties: ['openFile', 'multiSelections']
       })
       if (r.canceled || !r.filePaths.length) return { ok: false }
-      const images = []
-      for (const p of r.filePaths.slice(0, 6)) {
+
+      const files = []
+      for (const p of r.filePaths.slice(0, 4)) {
         try {
           const stat = fs.statSync(p)
-        if (stat.size > 10 * 1024 * 1024) return { ok: false, error: '文件需小于 10MB：' + path.basename(p) }
-          const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' }[path.extname(p).toLowerCase()] || 'image/png'
-          images.push(`data:${mime};base64,${fs.readFileSync(p).toString('base64')}`)
+          if (stat.size > 10 * 1024 * 1024) {
+            return { ok: false, error: '文件需小于 10MB：' + path.basename(p) }
+          }
+          const buf = fs.readFileSync(p)
+          if (buf.includes(0)) {
+            files.push({ name: path.basename(p), path: p, size: stat.size, binary: true })
+          } else {
+            files.push({ name: path.basename(p), path: p, size: stat.size, text: buf.toString('utf8') })
+          }
         } catch (err) {
           return { ok: false, error: err.message }
         }
       }
-      return { ok: true, images }
+      return { ok: true, files }
+    } finally {
+      filePickerCount--
     }
-    // 所有附件统一限制 10MB；文本内容直接随消息发送，二进制文件保留本地路径给 Agent。
-      const r = await dialog.showOpenDialog(win, {
-        title: '选择文件',
-        modal: true,
-      properties: ['openFile', 'multiSelections']
-    })
-    if (r.canceled || !r.filePaths.length) return { ok: false }
-    const files = []
-    for (const p of r.filePaths.slice(0, 4)) {
-      try {
-        const stat = fs.statSync(p)
-      if (stat.size > 512 * 1024) return { ok: false, error: '文本文件需小于 512KB：' + path.basename(p) }
-        const buf = fs.readFileSync(p)
-        if (buf.includes(0)) {
-          files.push({
-            name: path.basename(p),
-            path: p,
-            size: stat.size,
-            binary: true
-          })
-        } else {
-          files.push({ name: path.basename(p), path: p, size: stat.size, text: buf.toString('utf8') })
-        }
-      } catch (err) {
-        return { ok: false, error: err.message }
-      }
-    }
-    return { ok: true, files }
   })
+
 
   // 设置窗口
   ipcMain.handle('cfg:get', () => {
@@ -853,3 +872,5 @@ function onHookReady() {
   closePermissionGuide()
   askWin && !askWin.isDestroyed() && askWin.webContents.send('ask:hook-ready')
 }
+
+export {}

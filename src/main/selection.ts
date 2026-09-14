@@ -54,7 +54,7 @@ function run() {
   return JSON.stringify(out);
 }`
 
-function runOsa(script, timeout = 1500) {
+function runOsa(script: string, timeout = 1500): Promise<string | null> {
   return new Promise(resolve => {
     execFile('osascript', ['-l', 'JavaScript', '-e', script], { timeout }, (err, stdout) => {
       resolve(err ? null : stdout)
@@ -62,7 +62,7 @@ function runOsa(script, timeout = 1500) {
   })
 }
 
-function execBin(cmd, args, timeout) {
+function execBin(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise(resolve => {
     execFile(cmd, args, { timeout }, (err, stdout) => {
       resolve(err ? null : stdout)
@@ -103,7 +103,7 @@ async function captureSelection() {
     const raw = await execBin(helper, [], 900)
     if (raw) {
       try {
-        const j = JSON.parse(raw)
+        const j: any = JSON.parse(raw)
         helperError = j.err ?? 0
         helperBundleId = j.bundleId || ''
         if ((j.text || '').trim()) {
@@ -141,10 +141,10 @@ async function captureSelection() {
     runOsa(JXA_CAPTURE, 1600),
     runOsa(JXA_FRONTMOST, 1200)
   ])
-  let cap = { changed: false, text: '' }
-  let meta = { bundleId: '', appName: '' }
-  if (capRaw) { try { cap = JSON.parse(capRaw) } catch {} }
-  if (metaRaw) { try { meta = JSON.parse(metaRaw) } catch {} }
+  let cap: any = { changed: false, text: '' }
+  let meta: any = { bundleId: '', appName: '' }
+  if (capRaw) { try { cap = JSON.parse(capRaw) as any } catch {} }
+  if (metaRaw) { try { meta = JSON.parse(metaRaw) as any } catch {} }
   const text = (cap.changed && cap.text && cap.text.trim()) ? cap.text : ''
   // 某些应用会先写一条无 string 类型的 pasteboard 变更；NSPasteboard/JXA
   // 读不到时，Electron clipboard 可能仍能读到纯文本。
@@ -289,3 +289,5 @@ function stopSelection() {
 }
 
 module.exports = { initSelection, stopSelection, captureSelection, checkAccessibility, helperPath, startHookRetry, stopHookRetry }
+
+export {}

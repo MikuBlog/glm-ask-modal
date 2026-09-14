@@ -1,3 +1,4 @@
+;(function () {
 /* 问一问弹窗渲染层：豆包风格交互
    - 引用选中内容提问 / 自动追问（弹窗内划词）
    - 流式回复（含思考过程）、终止、重新生成
@@ -42,7 +43,7 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
-let config = { model: 'glm-5.3-flash', models: ['glm-5.3-flash'], effort: 'max', hasKey: true, localAgent: 'auto', agentExec: true }
+let config: any = { model: 'glm-5.3-flash', models: ['glm-5.3-flash'], effort: 'max', hasKey: true, localAgent: 'auto', agentExec: true, intentModel: 'glm-5.3-flash' }
 let agentSummary = null
 const sessions = new Map()
 let session = newSession()
@@ -88,7 +89,7 @@ function readDraft() {
   }
 }
 
-function writeDraft(draft = {}) {
+function writeDraft(draft: any = {}) {
   pending = session.draft
   pending.text = draft.text || ''
   pending.quote = draft.quote || ''
@@ -136,15 +137,15 @@ function buildUserContent(m) {
   return { text, images: m.images || [] }
 }
 
-function toApiMessages(messages) {
-  const out = [{
+function toApiMessages(messages: any[]): any[] {
+  const out: any[] = [{
     role: 'system',
     content: '你是 GLM 助手。用 Markdown 组织回复，代码放进代码块；回答保持简洁、结构清晰，用中文（除非用户要求其他语言）。'
   }]
   for (const m of messages) {
     if (m.role === 'user') {
       const { text, images } = buildUserContent(m)
-      const parts = [{ type: 'text', text }]
+      const parts: any[] = [{ type: 'text', text }]
       for (const url of images) parts.push({ type: 'image_url', image_url: { url } })
       out.push({ role: 'user', content: parts })
     } else if (typeof m.text === 'string' && m.text) {
@@ -669,7 +670,7 @@ async function send() {
   const toolPrompt = [text, quote, ...files.map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
 
   // 意图识别过程也作为回复链路的一部分展示；后续响应会复用这条 assistant 消息。
-  const intentMsg = {
+  const intentMsg: any = {
     id: uid(),
     role: 'assistant',
     text: '',
@@ -698,7 +699,7 @@ async function send() {
   intentMsg.reasoning = `意图识别：${route.reason || '已完成'}`
   refreshMsgEl(intentMsg)
 
-  if (!config.hasKey && !delegated) {
+  if (!config.hasKey && !route.delegated) {
     els.banner.classList.remove('hidden')
     toast('请先配置 API Key')
     window.askAPI.openSettings()
@@ -751,7 +752,7 @@ async function respond(delegated = false, existing = null) {
   hideSelbar()
 
   let lastRender = 0
-  const paint = force => {
+  const paint = (force = false) => {
     if (session !== owner || !owner.messages.includes(m)) return
     const now = Date.now()
     if (!force && now - lastRender < 80) return
@@ -873,8 +874,8 @@ function buildIntentHistory() {
   })
 }
 
-async function routeRequest(prompt = '', options = {}, onIntent) {
-  const emitIntent = (state, detail) => {
+async function routeRequest(prompt = '', options: any = {}, onIntent?: any) {
+  const emitIntent = (state: string, detail: string) => {
     onIntent?.({
       id: 'intent',
       title: `意图识别 · ${config.intentModel || 'glm-5.3-flash'}`,
@@ -1504,7 +1505,7 @@ function renderModelMenu() {
   els.modelMenu.appendChild(manage)
 }
 
-function toggleMenu(menu, show) {
+function toggleMenu(menu: any, show?: boolean) {
   const willShow = show === undefined ? menu.classList.contains('hidden') : show
   if (willShow) {
     if (menu === els.modelMenu) renderModelMenu()
@@ -1653,16 +1654,16 @@ els.btnSend.onclick = () => {
 $('#btn-min').onclick = () => window.askAPI.min()
 $('#btn-new').onclick = () => newTopic()
 $('#quote-clear').onclick = () => { pending.quote = ''; renderAttachChips(); updateSendBtn() }
-$('#btn-plus').onclick = e => { e.stopPropagation(); toggleMenu(els.plusMenu) }
-els.btnAgent.onclick = async e => {
+$('#btn-plus').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.plusMenu) }
+els.btnAgent.onclick = async (e?: any) => {
   e.stopPropagation()
   agentSummary = agentSummary || await window.askAPI.localAgents()
   refreshAgentLabel()
   toggleMenu(els.agentMenu)
 }
-$('#btn-model').onclick = e => { e.stopPropagation(); toggleMenu(els.modelMenu) }
-$('#btn-effort').onclick = e => { e.stopPropagation(); toggleMenu(els.effortMenu) }
-$('#btn-more').onclick = e => { e.stopPropagation(); toggleMenu(els.moreMenu) }
+$('#btn-model').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.modelMenu) }
+$('#btn-effort').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.effortMenu) }
+$('#btn-more').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.moreMenu) }
 $('#btn-pin').onclick = async () => {
   const pinned = await window.askAPI.togglePin()
   els.btnPin.classList.toggle('pinned', pinned)
@@ -1817,3 +1818,4 @@ setInterval(() => {
     })
   }
 }, 1000)
+})();

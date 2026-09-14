@@ -20,3 +20,5 @@ app.whenReady().then(() => {
     `<p>${TEXT}</p><p>Second line for spare selection target with several more words here.</p></body></html>`
   w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
 })
+
+export {}
