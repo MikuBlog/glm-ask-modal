@@ -332,6 +332,7 @@ button { font-family: inherit; }
 }
 .rs-head {
   display: flex;
+  position: relative;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -346,14 +347,16 @@ button { font-family: inherit; }
 .rs-head .chev { width: 12px; height: 12px; transition: transform .15s; }
 .reasoning.collapsed .chev { transform: rotate(-90deg); }
 .rs-preview {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: 8px;
-  max-width: 50%;
+  position: absolute;
+  left: 50%;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 18px;
   color: #6b7280;
 }
