@@ -499,11 +499,16 @@ function buildReasoning(m) {
   body.textContent = m.reasoning
   const preview = document.createElement('div')
   preview.className = 'rs-preview'
-  const latestLine = String(m.reasoning || '').split(/\r?\n/).filter(line => line.trim()).pop() || ''
+  const latestLine = latestReasoningLine(m.reasoning)
   preview.textContent = latestLine
   box.appendChild(head)
   box.appendChild(body)
   return box
+}
+
+function latestReasoningLine(reasoning: any) {
+  const lines = String(reasoning || '').split(/\r?\n/)
+  return lines[lines.length - 1]?.trim() || lines.find(line => line.trim())?.trim() || '正在思考…'
 }
 
 function buildToolTrace(m) {
@@ -791,7 +796,7 @@ async function respond(delegated = false, existing = null) {
           if (box) {
             const preview = box.querySelector('.rs-preview')
             const body = box.querySelector('.rs-body')
-            const latestLine = m.reasoning.split(/\r?\n/).filter(line => line.trim()).pop() || ''
+            const latestLine = latestReasoningLine(m.reasoning)
             if (preview) preview.textContent = latestLine
             if (body) body.textContent = m.reasoning
             const stick = nearBottom()
