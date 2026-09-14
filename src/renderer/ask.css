@@ -333,52 +333,60 @@ button { font-family: inherit; }
 .rs-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   width: 100%;
   border: none;
   background: transparent;
-  padding: 7px 12px;
-  font-size: 12.5px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font-size: 12px;
   color: var(--sub);
   cursor: pointer;
 }
 .rs-head:hover { color: #4e5969; }
-.rs-head .chev { width: 12px; height: 12px; transition: transform .15s; }
-.rs-head .chev { flex: none; min-width: 12px; }
-.rs-status {
+.rs-head .chev {
+  width: 12px; height: 12px;
   flex: none;
-  margin-left: 6px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: #f2f3f5;
-  color: #86909c;
-  font-size: 11px;
-  line-height: 14px;
-}
-.rs-status.running {
-  color: #b26a00;
-  background: #fff4e6;
-}
-.rs-status.done {
-  color: #16a34a;
-  background: #e9f7ef;
+  margin-left: auto;
+  transition: transform .15s;
 }
 .rs-label {
   flex: none;
+  font-size: 12px;
+  line-height: 18px;
   white-space: nowrap;
+  color: #4e5969;
+}
+.rs-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #f0a72c;
+  flex: none;
+}
+.reasoning.reasoning-active .rs-dot {
+  animation: tool-pulse 1.4s ease-in-out infinite;
+}
+.reasoning.reasoning-completed .rs-dot {
+  background: #2ea44f;
 }
 .reasoning.collapsed .chev { transform: rotate(-90deg); }
 .rs-preview {
   flex: 1 1 auto;
   min-width: 0;
-  margin-left: 8px;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
   color: #6b7280;
+}
+.rs-status {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: #a6adb8;
 }
 .rs-body {
   padding: 2px 14px 10px;
@@ -397,7 +405,7 @@ button { font-family: inherit; }
   margin: 8px 0;
   background: #fafbfc;
   border: 1px solid #eef0f2;
-  border-radius: 9px;
+  border-radius: 10px;
   overflow: hidden;
   font-size: 12px;
   color: var(--sub);
@@ -408,6 +416,8 @@ button { font-family: inherit; }
   gap: 7px;
   min-width: 0;
   padding: 7px 9px;
+  min-height: 32px;
+  box-sizing: border-box;
   cursor: pointer;
   user-select: none;
   list-style: none;

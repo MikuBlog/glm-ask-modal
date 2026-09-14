@@ -489,7 +489,7 @@ function buildReasoning(m) {
   const head = document.createElement('button')
   head.type = 'button'
   head.className = 'rs-head'
-  head.innerHTML = `<svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg><span class="rs-label">思考过程</span><span class="rs-status ${reasoningState}">${reasoningStatusText}</span><span class="rs-preview"></span>`
+  head.innerHTML = `<span class="rs-dot ${reasoningState}"></span><span class="rs-label">思考过程</span><span class="rs-preview"></span><span class="rs-status">${reasoningStatusText}</span><svg viewBox="0 0 24 24" class="chev"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>`
   head.onclick = () => {
     m.reasoningCollapsed = !m.reasoningCollapsed
     box.classList.toggle('collapsed', m.reasoningCollapsed)
