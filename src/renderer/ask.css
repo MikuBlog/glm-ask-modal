@@ -346,9 +346,10 @@ button { font-family: inherit; }
 .rs-head .chev { width: 12px; height: 12px; transition: transform .15s; }
 .reasoning.collapsed .chev { transform: rotate(-90deg); }
 .rs-preview {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   margin-left: 8px;
+  max-width: 50%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
