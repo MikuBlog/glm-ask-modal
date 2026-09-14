@@ -18,3 +18,5 @@ src/renderer/vendor/
 __pycache__/
 *.pyc
 src/native/selected-text
+
+/ask.js
