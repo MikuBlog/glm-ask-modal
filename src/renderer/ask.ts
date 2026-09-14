@@ -497,10 +497,8 @@ function buildReasoning(m) {
   const body = document.createElement('div')
   body.className = 'rs-body'
   body.textContent = m.reasoning
-  const preview = document.createElement('div')
-  preview.className = 'rs-preview'
   const latestLine = latestReasoningLine(m.reasoning)
-  preview.textContent = latestLine
+  head.querySelector('.rs-preview').textContent = latestLine
   box.appendChild(head)
   box.appendChild(body)
   return box
@@ -763,6 +761,8 @@ async function respond(delegated = false, existing = null) {
     const routeNote = `已路由到本机 Agent（${config.localAgent === 'auto' ? '自动选择' : config.localAgent}），正在调用 Skill / MCP / CLI…`
     m.reasoning = m.reasoning ? `${m.reasoning}\n${routeNote}` : routeNote
     m.__rsPainted = true
+    const preview = els.thread.querySelector(`[data-id="${m.id}"] .rs-preview`)
+    if (preview) preview.textContent = latestReasoningLine(m.reasoning)
   }
   updateSendBtn()
   hideSelbar()
