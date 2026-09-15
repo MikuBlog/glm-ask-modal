@@ -50,6 +50,7 @@ let askResizeTimer = null
 let filePickerCount = 0
 let askShowRequestedAt = 0
 let suppressSpaceHideUntil = 0
+let pendingFocusSession = null
 app.isQuitting = false
 
 const TOOLBAR_W = 480
@@ -306,6 +307,23 @@ function showAskOnActiveSpace() {
   } catch (err) {
     console.error('[ask] show failed:', err)
   }
+}
+
+function focusSessionFromMain(payload: any = {}) {
+  pendingFocusSession = payload || null
+  try {
+    app.focus({ steal: true })
+  } catch {}
+  showAskOnActiveSpace()
+
+  const sendFocus = () => {
+    if (!askWin || askWin.isDestroyed()) return
+    askWin.webContents.send('focus-session', pendingFocusSession)
+  }
+  ;[0, 80, 220, 500, 1000].forEach(delay => setTimeout(sendFocus, delay))
+  setTimeout(() => {
+    if (pendingFocusSession === payload) pendingFocusSession = null
+  }, 3000)
 }
 
 function openAsk(payload = {}) {
@@ -767,12 +785,7 @@ function registerIpc() {
     })
     notification.on('click', () => {
       notification.close()
-      showAskOnActiveSpace()
-      setTimeout(() => {
-        if (askWin && !askWin.isDestroyed()) {
-          askWin.webContents.send('focus-session', { sessionId: payload?.sessionId })
-        }
-      }, 180)
+      focusSessionFromMain({ sessionId: payload?.sessionId })
     })
     notification.show()
     return { kind: 'notification' }
@@ -902,10 +915,24 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
+  if (pendingFocusSession) {
+    focusSessionFromMain(pendingFocusSession)
+    pendingFocusSession = null
+    return
+  }
   openAsk({ fresh: false })
 })
 
 app.on('second-instance', () => openAsk({ fresh: false }))
+
+app.on('browser-window-focus', () => {
+  if (!pendingFocusSession) return
+  const payload = pendingFocusSession
+  setTimeout(() => {
+    if (!askWin || askWin.isDestroyed()) return
+    askWin.webContents.send('focus-session', payload)
+  }, 120)
+})
 
 app.whenReady().then(() => {
   buildMenu()
