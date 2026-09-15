@@ -383,8 +383,13 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
 
   function formatToolResult(title: string, content: string): string {
     const query = content.match(/Web search results for query:\s*["“]([^"”]+)["”]/i)?.[1]
-    const builtin = content.match(/Z\.ai Built-in Tool:\s*([^*\n]+)/i)?.[1]?.trim()
-    if (builtin && /webreader/i.test(builtin)) {
+    const builtinMatch = content.match(/(?:\*\*)?\s*(?:🌐\s*)?([A-Za-z0-9_.-]+)\s+Built-in Tool:\s*([^\n*]+)/i)
+    const provider = builtinMatch?.[1]
+    const tool = builtinMatch?.[2]?.trim()
+    const input = content.match(/\*\*Input:\*\*\s*```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim()
+    const outputStart = content.search(/\*\*Output:\*\*/i)
+    const output = outputStart >= 0 ? content.slice(outputStart).replace(/^\*\*Output:\*\*/i, '').trim() : ''
+    if (provider && tool && /webreader/i.test(tool)) {
       const url = content.match(/"url"\s*:\s*"([^"]+)"/i)?.[1]
       const payloadText = content.slice(content.toLowerCase().indexOf('webreader_result_summary:'))
       const payload = parseBalancedJSON(payloadText)
@@ -392,17 +397,18 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
       const resultText: any = node?.text || node
       const summary = resultText?.description || resultText?.content || resultText?.summary
       return [
-        `内嵌调用：Z.ai webReader`,
+        `内嵌调用：${provider} ${tool}`,
         url ? `读取地址：${url}` : '',
         resultText?.title ? `页面标题：${resultText.title}` : '',
         summary ? `页面摘要：${truncateText(summary)}` : ''
       ].filter(Boolean).join('\n')
     }
-    if (builtin) {
+    if (provider && tool) {
       return [
-        `内嵌调用：Z.ai ${builtin}`,
+        `内嵌调用：${provider} ${tool}`,
         query ? `查询：${query}` : '',
-        truncateText(content)
+        input ? `输入：${truncateText(input, 360)}` : '',
+        output ? `输出：${truncateText(output, 520)}` : ''
       ].filter(Boolean).join('\n')
     }
     return [
@@ -410,15 +416,9 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
       truncateText(content)
     ].filter(Boolean).join('\n')
   }
-  function stripZaiBuiltinBlocks(text: string): string {
-    const marker = text.match(/(?:\*\*)?\s*(?:🌐\s*)?Z\.ai Built-in Tool:\s*([A-Za-z_-]+)/i)
-    if (!marker) return text
-    return text.slice(0, marker.index ?? 0).replace(/\n{2,}$/,'\n')
-  }
-
   function builtinToolMatch(text: string): { name: string, index: number } | null {
-    const match = text.match(/(?:\*\*)?\s*(?:🌐\s*)?Z\.ai Built-in Tool:\s*([A-Za-z_-]+)/i)
-    return match ? { name: match[1], index: match.index ?? 0 } : null
+    const match = text.match(/(?:\*\*)?\s*(?:🌐\s*)?([A-Za-z0-9_.-]+)\s+Built-in Tool:\s*([^\n*]+)/i)
+    return match ? { name: match[2]?.trim() || 'tool', index: match.index ?? 0 } : null
   }
 
   function builtinToolName(text: string): string | null {
