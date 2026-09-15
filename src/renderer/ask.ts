@@ -829,6 +829,16 @@ async function respond(delegated = false, existing = null) {
       paint(true)
       return
     }
+    if (ev.type === 'content-reset') {
+      if (!m.__started) {
+        m.__started = true
+        m.reasoningDone = true
+        m.reasoningCollapsed = true
+      }
+      m.text = ev.text || ''
+      paint(true)
+      return
+    }
       if (ev.type === 'content') {
         if (!m.__started) {
           m.__started = true

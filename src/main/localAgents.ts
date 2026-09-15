@@ -410,7 +410,27 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
       truncateText(content)
     ].filter(Boolean).join('\n')
   }
+  function stripZaiBuiltinBlocks(text: string): string {
+    const marker = text.match(/(?:\*\*)?\s*(?:🌐\s*)?Z\.ai Built-in Tool:\s*([A-Za-z_-]+)/i)
+    if (!marker) return text
+    return text.slice(0, marker.index ?? 0).replace(/\n{2,}$/,'\n')
+  }
+
+  function builtinToolMatch(text: string): { name: string, index: number } | null {
+    const match = text.match(/(?:\*\*)?\s*(?:🌐\s*)?Z\.ai Built-in Tool:\s*([A-Za-z_-]+)/i)
+    return match ? { name: match[1], index: match.index ?? 0 } : null
+  }
+
+  function builtinToolName(text: string): string | null {
+    return builtinToolMatch(text)?.name || null
+  }
+
   let buffer = ''
+  let currentTextBlock = ''
+  let currentTextInternal = false
+  let currentTextMarkerAt = 0
+  let currentTextEmitted = 0
+  let zaiToolSequence = 0
   child.stdout.on('data', chunk => {
     lastActivityAt = Date.now()
     const text = stripAnsi(chunk.toString())
@@ -429,13 +449,65 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
       try { ev = JSON.parse(line) } catch { continue }
       if (chosen.id === 'claude') {
         // 开启 partial 后，正文/思考用 delta 实时流式返回；完整 message 只用于工具状态。
+        if (ev.type === 'stream_event' && ev.event?.type === 'content_block_start') {
+          const blockType = ev.event.content_block?.type
+          if (blockType === 'text') {
+            currentTextBlock = ''
+            currentTextInternal = false
+            currentTextMarkerAt = 0
+            currentTextEmitted = 0
+          }
+          continue
+        }
         if (ev.type === 'stream_event' && ev.event?.type === 'content_block_delta') {
           const delta = ev.event.delta || {}
           if (delta.type === 'text_delta' && delta.text) {
             claudeText += delta.text
-            emitContent(delta.text)
+            currentTextBlock += delta.text
+            const toolMatch = builtinToolMatch(currentTextBlock)
+            if (toolMatch && !currentTextInternal) {
+              currentTextInternal = true
+              currentTextMarkerAt = toolMatch.index
+              // 当前 block 中可能先有正常说明；保留到内嵌工具标记前。
+              const safeText = currentTextBlock.slice(0, currentTextMarkerAt)
+              if (safeText.length < currentTextEmitted) {
+                onEvent({ reqId, type: 'content-reset', text: safeText })
+              }
+              currentTextEmitted = safeText.length
+            }
+            if (currentTextInternal) {
+              const chunk = currentTextBlock.slice(currentTextEmitted)
+              if (chunk) {
+                currentTextEmitted = currentTextBlock.length
+                onEvent({ reqId, type: 'reasoning', text: chunk })
+              }
+              continue
+            }
+            if (currentTextBlock.length > currentTextEmitted) {
+              emitContent(currentTextBlock.slice(currentTextEmitted))
+              currentTextEmitted = currentTextBlock.length
+            }
           } else if (delta.type === 'thinking_delta' && delta.thinking) {
             onEvent({ reqId, type: 'reasoning', text: delta.thinking })
+          }
+          continue
+        }
+        if (ev.type === 'stream_event' && ev.event?.type === 'content_block_stop') {
+          const blockType = ev.event.content_block?.type
+          if (blockType === 'text' && currentTextInternal) {
+            const toolName = builtinToolName(currentTextBlock) || 'built-in tool'
+            const raw = currentTextBlock.slice(currentTextMarkerAt)
+            setToolState(`zai-builtin-${++zaiToolSequence}`, {
+              title: `Z.ai ${toolName}`,
+              state: 'done',
+              detail: formatToolResult(`Z.ai ${toolName}`, raw)
+            })
+          }
+          if (blockType === 'text') {
+            currentTextBlock = ''
+            currentTextInternal = false
+            currentTextMarkerAt = 0
+            currentTextEmitted = 0
           }
           continue
         }
