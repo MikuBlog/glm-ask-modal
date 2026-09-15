@@ -673,6 +673,11 @@ function showReplyCompleteToast(payload) {
   action.type = 'button'
   action.className = 'reply-toast-action'
   action.textContent = '去查看'
+  action.addEventListener('pointerdown', e => {
+    e.stopPropagation()
+    item.remove()
+    focusSessionById(payload?.sessionId)
+  })
   action.onclick = e => {
     e.stopPropagation()
     item.remove()
