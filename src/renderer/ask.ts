@@ -640,7 +640,11 @@ async function focusSessionById(id) {
     return
   }
   syncDraft()
-  await saveSession()
+  try {
+    await saveSession()
+  } catch (err) {
+    console.warn('[ask] save current session before focus failed:', err)
+  }
   let target = sessions.get(id)
   if (!target) {
     const full = await window.askAPI.loadHistory(id)
@@ -928,13 +932,15 @@ async function respond(delegated = false, existing = null) {
         streamHandlers.delete(reqId)
         if (session === owner) updateSendBtn()
         paint(true)
-        saveSession(owner)
-        if (ev.ok && !ev.aborted) {
-          window.askAPI.notifyReplyComplete({
-            sessionId: owner.id,
-            title: owner.title || '会话'
-          })
-        }
+        void (async () => {
+          await saveSession(owner)
+          if (ev.ok && !ev.aborted) {
+            window.askAPI.notifyReplyComplete({
+              sessionId: owner.id,
+              title: owner.title || '会话'
+            })
+          }
+        })()
       }
     }
   }

@@ -872,6 +872,7 @@ button { font-family: inherit; }
   flex-direction: column;
   gap: 8px;
   z-index: 120;
+  -webkit-app-region: no-drag;
 }
 
 .reply-toast {
@@ -889,7 +890,9 @@ button { font-family: inherit; }
   color: #1f2329;
   cursor: pointer;
   text-align: left;
+  -webkit-app-region: no-drag;
 }
+.reply-toast * { -webkit-app-region: no-drag; }
 .reply-toast:hover { border-color: rgba(0, 0, 0, 0.06); }
 .reply-toast-text {
   flex: 1 1 auto;

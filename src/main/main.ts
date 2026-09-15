@@ -200,6 +200,7 @@ function createAsk() {
     minHeight: ASK_MIN_H,
     show: false,
     frame: false,
+    acceptsFirstMouse: true,
     backgroundColor: '#ffffff',
     title: 'GLM问问',
     webPreferences: {
