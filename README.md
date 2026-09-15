@@ -41,7 +41,7 @@
 ### 方式一：下载 Release
 
 1. 打开仓库的 [Releases](../../releases) 页面。
-2. 下载 `GLM-Ask-0.1.3-arm64-mac.zip` 或 `GLM-Ask-0.1.3-arm64.dmg`。
+2. 下载 `GLM-Ask-0.1.4-arm64-mac.zip` 或 `GLM-Ask-0.1.4-arm64.dmg`。
 3. 将 `GLM问问.app` 拖到 `/Applications`。
 4. 首次打开时右键 App → 「打开」，确认一次 Gatekeeper 提示。
 5. 打开设置，填入 GLM API Key 并保存。
