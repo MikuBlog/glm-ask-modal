@@ -3,6 +3,8 @@ const pillEl = document.getElementById('pill')
 const dropdown = document.getElementById('dropdown')
 const disableLabel = document.getElementById('disable-label')
 let menuOpen = false
+let toolbarDrag = null
+let toolbarMoved = false
 
 const PAD = 6 // 与 toolbar.css body padding 保持一致
 const HPAD = 8
@@ -35,7 +37,32 @@ function setMenu(open) {
   requestAnimationFrame(reportFit)
 }
 
+pillEl.addEventListener('mousedown', e => {
+  if (e.button !== 0) return
+  toolbarDrag = { screenX: e.screenX, screenY: e.screenY }
+  toolbarMoved = false
+  window.tbAPI.dragStart({ screenX: e.screenX, screenY: e.screenY })
+})
+
+window.addEventListener('mousemove', e => {
+  if (!toolbarDrag) return
+  const dx = e.screenX - toolbarDrag.screenX
+  const dy = e.screenY - toolbarDrag.screenY
+  if (Math.hypot(dx, dy) > 2) toolbarMoved = true
+  window.tbAPI.dragMove({ screenX: e.screenX, screenY: e.screenY })
+})
+
+window.addEventListener('mouseup', () => {
+  toolbarDrag = null
+})
+
 pillEl.addEventListener('click', e => {
+  if (toolbarMoved) {
+    e.stopImmediatePropagation()
+    e.preventDefault()
+    toolbarMoved = false
+    return
+  }
   const btn = e.target.closest('button')
   if (!btn || btn.classList.contains('more-btn')) return
   const act = btn.dataset.act
