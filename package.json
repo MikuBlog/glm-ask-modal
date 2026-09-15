@@ -1,7 +1,7 @@
 {
   "name": "glm-ask-modal",
   "productName": "GLM问问",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "豆包风格的划词问答 Mac 应用，接入 GLM Coding Plan API",
   "main": "dist/main/main.js",
   "scripts": {
