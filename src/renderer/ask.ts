@@ -659,6 +659,7 @@ async function focusSessionById(id) {
 }
 
 function showReplyCompleteToast(payload) {
+  if (!payload?.sessionId || payload.sessionId === session.id) return
   const item = document.createElement('div')
   item.className = 'reply-toast'
   item.role = 'button'
@@ -683,8 +684,13 @@ function showReplyCompleteToast(payload) {
     item.remove()
     focusSessionById(payload?.sessionId)
   }
+  const hide = () => item.remove()
+  let hideTimer = window.setTimeout(hide, 3000)
+  item.addEventListener('mouseenter', () => window.clearTimeout(hideTimer))
+  item.addEventListener('mouseleave', () => {
+    hideTimer = window.setTimeout(hide, 3000)
+  })
   els.replyToasts.appendChild(item)
-  setTimeout(() => item.remove(), 3000)
 }
 
 /* ---------------- 会话持久化 ---------------- */

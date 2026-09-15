@@ -890,7 +890,7 @@ button { font-family: inherit; }
   cursor: pointer;
   text-align: left;
 }
-.reply-toast:hover { border-color: var(--accent); }
+.reply-toast:hover { border-color: rgba(0, 0, 0, 0.06); }
 .reply-toast-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -910,7 +910,7 @@ button { font-family: inherit; }
   cursor: pointer;
 }
 .reply-toast-action:hover {
-  background: #dbe6ff;
+  background: #e9efff;
 }
 .reply-toast-dot {
   width: 7px; height: 7px;
