@@ -46,6 +46,8 @@ let spaceObserverId = null
 let askShowToken = 0
 let askResizeTimer = null
 let filePickerCount = 0
+let askShowRequestedAt = 0
+let suppressSpaceHideUntil = 0
 app.isQuitting = false
 
 const TOOLBAR_W = 480
@@ -169,6 +171,10 @@ function hideToolbar() {
 // 或系统自定义切换方式无法都拦截，这里在 Workspace 通知到达时立即收起浮层。
 function hideTransientWindowsForSpaceChange() {
   debugLog('hideTransientWindowsForSpaceChange', { stack: process.env.GLM_ASK_TRACE ? new Error().stack : undefined })
+  // macOS 的 Space 切换通知可能晚于热键到达。若刚刚已经显式要求在当前
+  // Space 显示弹窗，就不能让迟到的通知把它隐藏/取消。
+  const now = Date.now()
+  if (now < suppressSpaceHideUntil || now - askShowRequestedAt < 1200) return
   try {
     askShowToken++ // 取消尚未执行的 show 延时，避免切换完成后又被旧 show 拉起
   } catch {}
@@ -260,47 +266,44 @@ function applyLoginItem(openAtLogin) {
 function showAskOnActiveSpace() {
   const win = askWin
   const token = ++askShowToken
+  askShowRequestedAt = Date.now()
+  suppressSpaceHideUntil = askShowRequestedAt + 1800
   debugLog('showAskOnActiveSpace', { token })
-  if (win.isVisible()) win.hide()
-  setTimeout(() => {
-    try {
-      if (token !== askShowToken) return
-      // showInactive() 在 macOS 上可能让 panel 留在原来所在的 Space；
-      // 热键唤起必须显式显示并聚焦到当前 Space。
-      if (!win.isVisible()) {
-        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-        win.show()
-      }
-      debugLog('ask shown', { token, visible: win.isVisible() })
-      win.focus()
-      if (win.__restoreSavedSize) {
-        // macOS 的 frame restore 会在 show 后一小段时间才覆盖构造尺寸；
-        // 等它完成后再还原到配置尺寸。
-        setTimeout(() => {
-          if (app.isQuitting || token !== askShowToken || !win.__restoreSavedSize) return
-          const saved = normalizedAskSize(store.loadConfig().askWidth, store.loadConfig().askHeight)
-          win.setBounds({ ...win.getBounds(), width: saved.askWidth, height: saved.askHeight })
-          win.__restoreSavedSize = false
-        }, 120)
-      }
-      win.focus()
-      // BrowserWindow.focus() 只保证 native key window；Chromium 文档不一定
-      // 自动恢复到 textarea。这里显式抢焦到 #input，点击「问问GLM」后可直接输入。
+  try {
+    // macOS 上 all-spaces 窗口隐藏后再 showInactive/show，可能仍停留在旧 Space。
+    // 先临时退出 all-spaces，把窗口显式带到当前 Space，再恢复 all-spaces。
+    if (win.isVisible()) win.hide()
+    win.setVisibleOnAllWorkspaces(false)
+    win.show()
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    win.show()
+    win.focus()
+
+    if (win.__restoreSavedSize) {
       setTimeout(() => {
-        if (app.isQuitting || token !== askShowToken || !win.isVisible() || win.webContents.isDestroyed()) return
-        win.webContents.focus()
-        win.webContents.executeJavaScript(`
-          (() => {
-            const input = document.querySelector('#input')
-            if (input) {
-              input.focus({ preventScroll: true })
-              input.setSelectionRange(input.value.length, input.value.length)
-            }
-          })()
-        `).catch(() => {})
-      }, 0)
-    } catch {}
-  }, 40)
+        if (app.isQuitting || token !== askShowToken || !win.__restoreSavedSize) return
+        const saved = normalizedAskSize(store.loadConfig().askWidth, store.loadConfig().askHeight)
+        win.setBounds({ ...win.getBounds(), width: saved.askWidth, height: saved.askHeight })
+        win.__restoreSavedSize = false
+      }, 120)
+    }
+
+    setTimeout(() => {
+      if (app.isQuitting || token !== askShowToken || !win.isVisible() || win.webContents.isDestroyed()) return
+      win.webContents.focus()
+      win.webContents.executeJavaScript(`
+        (() => {
+          const input = document.querySelector('#input')
+          if (input) {
+            input.focus({ preventScroll: true })
+            input.setSelectionRange(input.value.length, input.value.length)
+          }
+        })()
+      `).catch(() => {})
+    }, 0)
+  } catch (err) {
+    console.error('[ask] show failed:', err)
+  }
 }
 
 function openAsk(payload = {}) {
