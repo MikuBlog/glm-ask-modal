@@ -26,6 +26,7 @@ if (!isSmoke && !process.env.GLM_ASK_DEV && !app.requestSingleInstanceLock()) {
 
 // ---------- 窗口状态 ----------
 let toolbarWin = null
+let toolbarDrag = null
 let askWin = null
 let settingsWin = null
 let permissionWin = null
@@ -502,6 +503,7 @@ function registerIpc() {
   })
   ipcMain.handle('tb:copy', async () => {
     if (lastCapture?.text) clipboard.writeText(lastCapture.text)
+    hideToolbar()
     return true
   })
   ipcMain.on('tb:disable', () => {
@@ -515,6 +517,43 @@ function registerIpc() {
   ipcMain.on('tb:settings', () => {
     hideToolbar()
     openSettings()
+  })
+  ipcMain.on('tb:drag-start', (e, point) => {
+    if (!toolbarWin || toolbarWin.isDestroyed()) return
+    const bounds = toolbarWin.getBounds()
+    toolbarDrag = {
+      screenX: Number(point?.screenX) || 0,
+      screenY: Number(point?.screenY) || 0,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height
+    }
+  })
+  ipcMain.on('tb:drag-move', (e, point) => {
+    if (!toolbarDrag || !toolbarWin || toolbarWin.isDestroyed()) return
+    const display = screen.getDisplayNearestPoint({
+      x: toolbarDrag.x + Math.round(toolbarDrag.width / 2),
+      y: toolbarDrag.y + Math.round(toolbarDrag.height / 2)
+    })
+    const wa = display.workArea
+    const x = Math.min(
+      Math.max(toolbarDrag.x + Number(point?.screenX) - toolbarDrag.screenX, wa.x),
+      wa.x + wa.width - toolbarDrag.width
+    )
+    const y = Math.min(
+      Math.max(toolbarDrag.y + Number(point?.screenY) - toolbarDrag.screenY, wa.y),
+      wa.y + wa.height - toolbarDrag.height
+    )
+    toolbarWin.setBounds({
+      x: Math.round(x),
+      y: Math.round(y),
+      width: toolbarDrag.width,
+      height: toolbarDrag.height
+    })
+  })
+  ipcMain.on('tb:drag-end', () => {
+    toolbarDrag = null
   })
 
   // 问一问窗口
