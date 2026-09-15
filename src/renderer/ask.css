@@ -891,6 +891,27 @@ button { font-family: inherit; }
   text-align: left;
 }
 .reply-toast:hover { border-color: var(--accent); }
+.reply-toast-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reply-toast-action {
+  flex: none;
+  border: none;
+  background: #eaf0ff;
+  color: var(--accent);
+  border-radius: 7px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reply-toast-action:hover {
+  background: #dbe6ff;
+}
 .reply-toast-dot {
   width: 7px; height: 7px;
   border-radius: 50%;

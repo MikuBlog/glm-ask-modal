@@ -659,14 +659,25 @@ async function focusSessionById(id) {
 }
 
 function showReplyCompleteToast(payload) {
-  const item = document.createElement('button')
-  item.type = 'button'
+  const item = document.createElement('div')
   item.className = 'reply-toast'
+  item.role = 'button'
+  item.tabIndex = 0
   const dot = document.createElement('span')
   dot.className = 'reply-toast-dot'
   const text = document.createElement('span')
+  text.className = 'reply-toast-text'
   text.textContent = `${payload?.title || '会话'} 回复已完成`
-  item.append(dot, text)
+  const action = document.createElement('button')
+  action.type = 'button'
+  action.className = 'reply-toast-action'
+  action.textContent = '去查看'
+  action.onclick = e => {
+    e.stopPropagation()
+    item.remove()
+    focusSessionById(payload?.sessionId)
+  }
+  item.append(dot, text, action)
   item.title = '点击查看会话'
   item.onclick = () => {
     item.remove()
