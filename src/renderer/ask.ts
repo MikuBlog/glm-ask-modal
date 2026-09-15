@@ -36,7 +36,8 @@ const els = {
   fileInput: $('#file-input'),
   imageMenu: $('#image-menu'),
   imagePreview: $('#image-preview'),
-  previewImg: $('#preview-img')
+  previewImg: $('#preview-img'),
+  replyToasts: $('#reply-toasts')
 }
 
 function uid() {
@@ -633,6 +634,48 @@ function formatDuration(ms) {
   return `${hours} 小时 ${minutes % 60} 分 ${seconds} 秒`
 }
 
+async function focusSessionById(id) {
+  if (!id || session.id === id) {
+    els.scroll.scrollTop = els.scroll.scrollHeight
+    return
+  }
+  syncDraft()
+  await saveSession()
+  let target = sessions.get(id)
+  if (!target) {
+    const full = await window.askAPI.loadHistory(id)
+    if (full) {
+      target = normalizeSession(full)
+      sessions.set(target.id, target)
+    }
+  }
+  if (!target) return
+  session = target
+  editingId = null
+  writeDraft(target.draft)
+  renderAll()
+  updateSendBtn()
+  refreshConfig()
+}
+
+function showReplyCompleteToast(payload) {
+  const item = document.createElement('button')
+  item.type = 'button'
+  item.className = 'reply-toast'
+  const dot = document.createElement('span')
+  dot.className = 'reply-toast-dot'
+  const text = document.createElement('span')
+  text.textContent = `${payload?.title || '会话'} 回复已完成`
+  item.append(dot, text)
+  item.title = '点击查看会话'
+  item.onclick = () => {
+    item.remove()
+    focusSessionById(payload?.sessionId)
+  }
+  els.replyToasts.appendChild(item)
+  setTimeout(() => item.remove(), 3000)
+}
+
 /* ---------------- 会话持久化 ---------------- */
 async function saveSession(target = session) {
   if (target === session) syncDraft()
@@ -864,6 +907,12 @@ async function respond(delegated = false, existing = null) {
         if (session === owner) updateSendBtn()
         paint(true)
         saveSession(owner)
+        if (ev.ok && !ev.aborted) {
+          window.askAPI.notifyReplyComplete({
+            sessionId: owner.id,
+            title: owner.title || '会话'
+          })
+        }
       }
     }
   }
@@ -1840,6 +1889,8 @@ els.thread.addEventListener('click', e => {
 window.askAPI.onLlm(ev => {
   streamHandlers.get(ev.reqId)?.onEvent(ev)
 })
+window.askAPI.onReplyCompleteToast(payload => showReplyCompleteToast(payload))
+window.askAPI.onFocusSession(payload => focusSessionById(payload?.sessionId))
 window.askAPI.onCfgChanged(cfg => {
   config = { ...config, ...cfg }
   refreshAgentLabel()

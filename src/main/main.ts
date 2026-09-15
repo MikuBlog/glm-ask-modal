@@ -1,5 +1,6 @@
 // 主进程：窗口编排 + IPC + 划词流程
 const { app, BrowserWindow, ipcMain, screen, clipboard, globalShortcut, Menu, shell, dialog, nativeImage, nativeTheme, systemPreferences } = require('electron')
+const { Notification: ElectronNotification } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const store = require('./store')
@@ -749,6 +750,32 @@ function registerIpc() {
     } finally {
       filePickerCount--
     }
+  })
+
+  ipcMain.handle('reply:complete', (e, payload: any = {}) => {
+    const title = String(payload?.title || '会话').slice(0, 80)
+    const shouldToast = !!(askWin && !askWin.isDestroyed() && askWin.isVisible() && !askWin.isMinimized())
+    if (shouldToast) {
+      askWin.webContents.send('reply-complete-toast', { sessionId: payload?.sessionId, title })
+      return { kind: 'toast' }
+    }
+
+    const notification = new ElectronNotification({
+      title: `${title} 回复已完成`,
+      body: '点击查看回复',
+      silent: false
+    })
+    notification.on('click', () => {
+      notification.close()
+      showAskOnActiveSpace()
+      setTimeout(() => {
+        if (askWin && !askWin.isDestroyed()) {
+          askWin.webContents.send('focus-session', { sessionId: payload?.sessionId })
+        }
+      }, 180)
+    })
+    notification.show()
+    return { kind: 'notification' }
   })
 
 

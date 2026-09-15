@@ -863,4 +863,39 @@ button { font-family: inherit; }
   pointer-events: none;
 }
 
+#reply-toasts {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 120;
+}
+
+.reply-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+  max-width: min(520px, 82vw);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .12);
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: #1f2329;
+  cursor: pointer;
+  text-align: left;
+}
+.reply-toast:hover { border-color: var(--accent); }
+.reply-toast-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #2ea44f;
+  flex: none;
+}
+
 .hidden { display: none !important; }
