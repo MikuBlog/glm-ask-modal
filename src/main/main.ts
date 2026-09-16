@@ -1,5 +1,6 @@
 // 主进程：窗口编排 + IPC + 划词流程
 const { app, BrowserWindow, ipcMain, screen, clipboard, globalShortcut, Menu, shell, dialog, nativeImage, nativeTheme, systemPreferences } = require('electron')
+const { execFile } = require('child_process')
 const { Notification: ElectronNotification } = require('electron')
 const path = require('path')
 const fs = require('fs')
@@ -69,6 +70,18 @@ const debugLog = (...args) => {
   if (process.env.GLM_ASK_DEBUG) console.log('[ask-debug]', new Date().toISOString(), ...args)
 }
 
+function activateOwnApp() {
+  try { app.focus({ steal: true }) } catch {}
+  // Electron app.focus 在部分打包 nonactivating panel 场景不会切换 LSActiveApp；
+  // System Events 只改进程 frontmost，不会向自身发送 reopen Apple Event。
+  if (app.isPackaged) {
+    execFile('osascript', [
+      '-e',
+      `tell application "System Events" to set frontmost of first application process whose unix id is ${process.pid} to true`
+    ], () => {})
+  }
+}
+
 function zoneAt(pt) {
   try {
     if (toolbarWin && toolbarWin.isVisible() && toolbarWin.__hitRel) {
@@ -112,6 +125,9 @@ function scheduleAskSizePersist() {
 // ---------- 工具条 ----------
 function createToolbar() {
   toolbarWin = new BrowserWindow({
+    // Nonactivating panel：点击“复制/总结”不能把 GLM问问 激活成前台 App；
+    // 否则工具条隐藏后 macOS 会回落到 Finder，看起来像误触激活访达。
+    type: 'panel',
     width: TOOLBAR_W,
     height: TOOLBAR_CLOSED_H,
     show: false,
@@ -274,10 +290,6 @@ function showAskOnActiveSpace() {
   suppressSpaceHideUntil = askShowRequestedAt + 1800
   debugLog('showAskOnActiveSpace', { token })
   try {
-    // macOS panel 是 nonactivating panel：show/focus 只能把它变成 key window，
-    // 不会激活所属 App。快捷键唤起时若当前活跃 App 是访达，菜单栏就会停在访达。
-    if (process.platform === 'darwin') app.focus({ steal: true })
-
     // macOS 上 all-spaces 窗口隐藏后再 showInactive/show，可能仍停留在旧 Space。
     // 先临时退出 all-spaces，把窗口显式带到当前 Space，再恢复 all-spaces。
     if (win.isVisible()) win.hide()
@@ -286,6 +298,15 @@ function showAskOnActiveSpace() {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     win.show()
     win.focus()
+    // panel 是 nonactivating：先把它显示成可见窗口，再激活 App；
+    // 否则 App 无可见窗口时 app.focus 无法从 Finder 抢回 active 状态。
+    if (process.platform === 'darwin') {
+      activateOwnApp()
+      setTimeout(() => {
+        if (app.isQuitting || token !== askShowToken || !win.isVisible()) return
+        activateOwnApp()
+      }, 50)
+    }
 
     if (win.__restoreSavedSize) {
       setTimeout(() => {

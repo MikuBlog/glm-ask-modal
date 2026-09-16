@@ -5,7 +5,7 @@
 const { execFile } = require('child_process')
 const path = require('path')
 const fs = require('fs')
-const { clipboard } = require('electron')
+const { clipboard, systemPreferences } = require('electron')
 const { uIOhook, UiohookKey } = require('uiohook-napi')
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -97,10 +97,10 @@ function scheduleClipboardRestore(prev, captured) {
 
 type GesturePoint = { x: number; y: number }
 
-async function probeDragPasteboards(): Promise<Record<string, number> | null> {
+async function probeDragPasteboards(timeout = 250): Promise<Record<string, number> | null> {
   const helper = helperPath()
   if (!helper) return null
-  const raw = await execBin(helper, ['--drag-pasteboards'], 250)
+  const raw = await execBin(helper, ['--drag-pasteboards'], timeout)
   if (!raw) return null
   const result = JSON.parse(raw)
   const boards = result?.dragPasteboards || {}
@@ -129,8 +129,12 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
   let helperResult: any = null
   const helper = helperPath()
   if (helper) {
-    const raw = await execBin(helper, from ? [String(from.x), String(from.y)] : [], 900)
-    if (raw) {
+    // Chromium/Electron 偶尔在 mouse-up 后才提交 selectedText/selectedTextRange。
+    // 原生助手内部已有短轮询；这里再做空转重试，覆盖焦点/AX tree 更新较慢的应用。
+    for (const delay of [0, 100, 220]) {
+      if (delay) await sleep(delay)
+      const raw = await execBin(helper, from ? [String(from.x), String(from.y)] : [], 900)
+      if (!raw) continue
       try {
         const j: any = JSON.parse(raw)
         helperResult = j
@@ -146,12 +150,12 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
             simulated: false
           }
         }
-      } catch { /* 落入兜底 */ }
+      } catch { /* 继续重试 */ }
     }
   }
   // 严格文字模式：AX 读不到就是“没识别到文字”，绝不注入 Cmd+C。
   if (options?.strictTextOnly) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，跳过 Cmd+C', { helperError, hit: helperResult?.hit })
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，跳过 Cmd+C', { helperError, result: helperResult })
     return {
       text: '',
       appName: helperResult?.appName || '',
@@ -264,7 +268,20 @@ const DRAG_MIN = 12
 let hookRunning = false
 let retryTimer = null
 
+function hasAccessibilityPermission() {
+  if (process.platform !== 'darwin') return true
+  try {
+    return systemPreferences.isTrustedAccessibilityClient(false)
+  } catch {
+    // 老版本 Electron 没有该 API 时保持原行为。
+    return true
+  }
+}
+
 function tryStartHook() {
+  // uiohook-napi 在未授权的打包进程中可能卡死在 hook_enable 的
+  // uv_thread_join，不能直接在主线程试探；先走 Electron 的 TCC 检查。
+  if (!hasAccessibilityPermission()) return false
   if (hookRunning) return true
   try {
     uIOhook.start()
@@ -389,6 +406,9 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
   } catch (e) {
     console.warn('[selection] 注册鼠标/键盘事件失败：', e.message)
   }
+  // 首次执行新签名的原生二进制可能触发 macOS 校验，超过 mousedown 后的 250ms
+  // 探测窗口。启动时预热一次，避免第一次对象拖拽因 baseline 缺失而误判。
+  void probeDragPasteboards(1000).catch(() => {})
   return { hookStarted: tryStartHook() }
 }
 

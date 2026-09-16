@@ -225,6 +225,12 @@ if let front = frontmost {
 
     var text = querySelectedText(app: front.app, hit: hitElement)
     if text == nil {
+        // Selection state can be committed slightly after mouse-up in
+        // Chromium/Electron. Poll once before deciding the hit was non-text.
+        usleep(50_000)
+        text = querySelectedText(app: front.app, hit: hitElement)
+    }
+    if text == nil {
         // AXManualAccessibility is normally sufficient for Electron. Chromium
         // browsers sometimes need the legacy enhanced-UI switch as a retry.
         let shouldEnhance = isLikelyChromiumBrowser(bundleId)
@@ -232,7 +238,7 @@ if let front = frontmost {
         if shouldEnhance && !enhancedEnabled {
             out["accessibility"] = ["manual": manualEnabled, "enhanced": false]
         } else {
-            usleep(useconds_t(shouldEnhance ? 100_000 : 40_000))
+            usleep(useconds_t(shouldEnhance ? 120_000 : 100_000))
             text = querySelectedText(app: front.app, hit: hitElement)
             out["accessibility"] = ["manual": manualEnabled, "enhanced": shouldEnhance]
         }
