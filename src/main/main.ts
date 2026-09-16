@@ -286,9 +286,6 @@ function showAskOnActiveSpace() {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     win.show()
     win.focus()
-    // panel show/focus 可能触发一次短暂的应用激活回退；窗口已落到目标 Space
-    // 后再抢一次焦点，保证菜单栏 / Dock 的 active app 稳定停在 GLM问问。
-    if (process.platform === 'darwin') app.focus({ steal: true })
 
     if (win.__restoreSavedSize) {
       setTimeout(() => {
@@ -457,7 +454,7 @@ function startSelectionFlow() {
         }
       } catch {}
     },
-    onGesture: async (pt, kind) => {
+    onGesture: async (pt, kind, from) => {
       if (zoneAt(pt)) return // 点击/划选发生在自己窗口内
       if (screenshotArmed) {
         // 截图抑制中：不发 Cmd+C。框选拖选结束 = 危险的框选阶段已过，解除抑制
@@ -469,7 +466,7 @@ function startSelectionFlow() {
       const token = ++captureToken
       // 先捕获、确认拿到文本后再展示工具条（约 300ms）——
       // 截图框选、拖图标、拖窗口等不产生文本复制的操作绝不误弹
-      const meta = await captureSelection()
+      const meta = await captureSelection(from || pt)
       if (token !== captureToken) return
       const text = (meta.text || '').trim()
       if (!text) {

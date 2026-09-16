@@ -11,6 +11,47 @@ func axString(_ el: AXUIElement, _ attr: CFString) -> String? {
     return s
 }
 
+func axAttributeNames(_ el: AXUIElement) -> [String] {
+    var value: CFArray?
+    guard AXUIElementCopyAttributeNames(el, &value) == .success,
+          let names = value as? [String] else { return [] }
+    return names
+}
+
+func elementInfo(_ el: AXUIElement) -> [String: Any] {
+    let names = axAttributeNames(el)
+    var info: [String: Any] = [
+        "role": axString(el, kAXRoleAttribute as CFString) ?? "",
+        "roleDescription": axString(el, kAXRoleDescriptionAttribute as CFString) ?? "",
+        "supportsSelectedText": names.contains(kAXSelectedTextAttribute as String)
+    ]
+    if let text = axString(el, kAXSelectedTextAttribute as CFString) {
+        info["selectedText"] = text
+    }
+    return info
+}
+
+func hitElementAt(_ x: Float, _ y: Float) -> AXUIElement? {
+    let sys = AXUIElementCreateSystemWide()
+    var value: AXUIElement?
+    guard AXUIElementCopyElementAtPosition(sys, x, y, &value) == .success,
+          let el = value else { return nil }
+    return el
+}
+
+func hitAncestorSupportsSelectedText(_ start: AXUIElement) -> Bool {
+    var el: AXUIElement? = start
+    for _ in 0..<6 {
+        guard let current = el else { return false }
+        if axAttributeNames(current).contains(kAXSelectedTextAttribute as String) { return true }
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &value) == .success,
+              let parent = value else { return false }
+        el = (parent as! AXUIElement)
+    }
+    return false
+}
+
 var out: [String: Any] = ["bundleId": "", "appName": "", "text": "", "err": -1]
 
 let sys = AXUIElementCreateSystemWide()
@@ -35,6 +76,16 @@ if let running = NSWorkspace.shared.frontmostApplication {
     out["bundleId"] = running.bundleIdentifier ?? ""
     if let name = running.localizedName, (out["appName"] as? String ?? "").isEmpty {
         out["appName"] = name
+    }
+}
+
+if CommandLine.arguments.count >= 3,
+   let x = Float(CommandLine.arguments[1]),
+   let y = Float(CommandLine.arguments[2]) {
+    if let el = hitElementAt(x, y) {
+        var hit = elementInfo(el)
+        hit["ancestorSupportsSelectedText"] = hitAncestorSupportsSelectedText(el)
+        out["hit"] = hit
     }
 }
 

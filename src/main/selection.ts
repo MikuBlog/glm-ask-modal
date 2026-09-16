@@ -94,16 +94,20 @@ function scheduleClipboardRestore(prev, captured) {
   }, 600)
 }
 
-async function captureSelection() {
+type GesturePoint = { x: number; y: number }
+
+async function captureSelection(from?: GesturePoint) {
   // 路径 A：原生助手（AX 直读，不碰剪贴板）
   let helperError = -2
   let helperBundleId = ''
+  let helperResult: any = null
   const helper = helperPath()
   if (helper) {
-    const raw = await execBin(helper, [], 900)
+    const raw = await execBin(helper, from ? [String(from.x), String(from.y)] : [], 900)
     if (raw) {
       try {
         const j: any = JSON.parse(raw)
+        helperResult = j
         helperError = j.err ?? 0
         helperBundleId = j.bundleId || ''
         if ((j.text || '').trim()) {
@@ -119,6 +123,31 @@ async function captureSelection() {
     }
   }
   if (process.env.GLM_ASK_DEBUG) console.log('[selection] AX 未取到文本，进入 Cmd+C 兜底', helperError)
+
+  // 只有鼠标按下的位置确实落在文本控件/可暴露 selected text 的元素上时，
+  // 才允许 Cmd+C 兜底。拖拽文件、图片、按钮、窗口标题等非文本对象不注入快捷键。
+  const hit: any = helperResult?.hit
+  const selectionEvidence = !!(hit && (
+    hit.supportsSelectedText === true ||
+    hit.ancestorSupportsSelectedText === true
+  ))
+  const nonTextHitRoles = new Set([
+    'AXButton', 'AXImage', 'AXSlider', 'AXCheckBox', 'AXRadioButton',
+    'AXPopUpButton', 'AXMenuButton', 'AXTabGroup', 'AXToolbar',
+    'AXMenuBar', 'AXMenuBarItem', 'AXMenuItem', 'AXDockItem',
+    'AXWindow', 'AXSheet'
+  ])
+  const isKnownNonText = !!hit && nonTextHitRoles.has(hit.role)
+  if (from && hit && isKnownNonText && !selectionEvidence) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] 非文本拖拽，跳过 Cmd+C', hit)
+    return {
+      text: '',
+      appName: helperResult?.appName || '',
+      bundleId: helperBundleId,
+      axError: helperError,
+      simulated: false
+    }
+  }
 
   // Finder 双击文件夹/空白处没有文本选区；此时注入 Cmd+C 只会触发系统提示音。
   if (helperBundleId === 'com.apple.finder') {
@@ -206,7 +235,7 @@ function stopHookRetry() {
   }
 }
 
-function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, onScreenshotCancel, onSwitchSpace }) {
+function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, onScreenshotCancel, onSwitchSpace }: any) {
   let lastHotkeyDown = 0
   let lastShotDown = 0
   try {
@@ -222,7 +251,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       const dist = Math.hypot(e.x - from.x, e.y - from.y)
       const dur = Date.now() - from.t
       if (dist >= DRAG_MIN && dur >= 50) {
-        onGesture({ x: e.x, y: e.y }, 'drag')
+        onGesture({ x: e.x, y: e.y }, 'drag', from)
         return
       }
       // 双击/三击选词：450ms 内同点连续点击
@@ -230,7 +259,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       if (lastClick && now - lastClick.t < 450 && Math.hypot(e.x - lastClick.x, e.y - lastClick.y) < 40) {
         lastClick.count++
         lastClick.t = now
-        if (lastClick.count >= 2) onGesture({ x: e.x, y: e.y }, 'multiclick')
+        if (lastClick.count >= 2) onGesture({ x: e.x, y: e.y }, 'multiclick', from)
       } else {
         lastClick = { t: now, x: e.x, y: e.y, count: 1 }
       }
