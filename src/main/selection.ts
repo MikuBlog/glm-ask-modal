@@ -65,6 +65,7 @@ function runOsa(script: string, timeout = 1500): Promise<string | null> {
 function execBin(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise(resolve => {
     execFile(cmd, args, { timeout }, (err, stdout) => {
+      if (err && process.env.GLM_ASK_DEBUG) console.log('[selection] helper exec failed', { code: (err as any).code, signal: (err as any).signal, message: err.message })
       resolve(err ? null : stdout)
     })
   })
@@ -96,14 +97,23 @@ function scheduleClipboardRestore(prev, captured) {
 
 type GesturePoint = { x: number; y: number }
 
-async function probeDragPasteboards(): Promise<boolean> {
+async function probeDragPasteboards(): Promise<Record<string, number> | null> {
   const helper = helperPath()
-  if (!helper) return false
+  if (!helper) return null
   const raw = await execBin(helper, ['--drag-pasteboards'], 250)
-  if (!raw) return false
+  if (!raw) return null
   const result = JSON.parse(raw)
   const boards = result?.dragPasteboards || {}
-  return Object.values(boards).some((board: any) => Array.isArray(board?.types) && board.types.length > 0)
+  const counts: Record<string, number> = {}
+  for (const [name, board] of Object.entries(boards)) {
+    counts[name] = Number((board as any)?.changeCount || 0)
+  }
+  return counts
+}
+
+function dragPasteboardAdvanced(baseline: Record<string, number> | null, current: Record<string, number> | null) {
+  if (!baseline || !current) return false
+  return Object.keys(current).some(name => current[name] > Number(baseline[name] || 0))
 }
 
 async function captureSelection(from?: GesturePoint, options?: { dragPasteboardSeen?: boolean; strictTextOnly?: boolean }) {
@@ -127,7 +137,7 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
         helperError = j.err ?? 0
         helperBundleId = j.bundleId || ''
         const axText = String(j.text || '')
-        if (axText.trim() && !axText.includes('\uFFFC')) {
+        if (axText.trim()) {
           return {
             text: axText,
             appName: j.appName || '',
@@ -246,6 +256,8 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
 const DRAG_MIN = 12
   let downPoint = null
   let dragPasteboardSeen = false
+  let dragPasteboardBaseline: Record<string, number> | null = null
+  let dragProbeSession = 0
   let dragProbeTimer: any = null
   let dragProbeRunning = false
   let lastClick = null // { t, x, y, count }
@@ -291,12 +303,20 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       if (e.button !== 1) return
       downPoint = { x: e.x, y: e.y, t: Date.now() }
       dragPasteboardSeen = false
+      dragPasteboardBaseline = null
+      const session = ++dragProbeSession
       if (!dragProbeTimer) {
         const probe = async () => {
           if (dragProbeRunning) return
           dragProbeRunning = true
           try {
-            if (await probeDragPasteboards()) dragPasteboardSeen = true
+            const current = await probeDragPasteboards()
+            if (session !== dragProbeSession) return
+            if (!dragPasteboardBaseline) {
+              dragPasteboardBaseline = current
+            } else if (dragPasteboardAdvanced(dragPasteboardBaseline, current)) {
+              dragPasteboardSeen = true
+            }
           } catch {} finally {
             dragProbeRunning = false
           }
@@ -310,6 +330,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       if (e.button !== 1 || !downPoint) return
       const from = downPoint
       downPoint = null
+      dragProbeSession++
       if (dragProbeTimer) {
         clearInterval(dragProbeTimer)
         dragProbeTimer = null
