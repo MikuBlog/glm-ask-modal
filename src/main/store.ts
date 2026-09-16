@@ -3,7 +3,7 @@ const { app } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
-const MAX_PERSISTED_SESSIONS = 500
+const MAX_PERSISTED_SESSIONS = 1000
 
 const DEFAULTS = {
   apiKey: '',
