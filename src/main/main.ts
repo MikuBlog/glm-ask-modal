@@ -290,10 +290,9 @@ function showAskOnActiveSpace() {
   suppressSpaceHideUntil = askShowRequestedAt + 1800
   debugLog('showAskOnActiveSpace', { token })
   try {
-    // macOS 上 all-spaces 窗口隐藏后再 showInactive/show，可能仍停留在旧 Space。
-    // 先临时退出 all-spaces，把窗口显式带到当前 Space，再恢复 all-spaces。
+    // 不能先退出 all-spaces 再 show：隐藏窗口会被重新归属到创建时的 Space，
+    // macOS 为了显示它会强制切回那个桌面。保持 all-spaces 并在当前 Space show。
     if (win.isVisible()) win.hide()
-    win.setVisibleOnAllWorkspaces(false)
     win.show()
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     win.show()
