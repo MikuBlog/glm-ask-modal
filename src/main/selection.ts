@@ -106,7 +106,7 @@ async function probeDragPasteboards(): Promise<boolean> {
   return Object.values(boards).some((board: any) => Array.isArray(board?.types) && board.types.length > 0)
 }
 
-async function captureSelection(from?: GesturePoint, options?: { dragPasteboardSeen?: boolean }) {
+async function captureSelection(from?: GesturePoint, options?: { dragPasteboardSeen?: boolean; strictTextOnly?: boolean }) {
   // drag-and-drop 会在 drag pasteboard 上写入类型；文本划选不会。
   // 这是最可靠的对象拖拽信号，必须在任何 Cmd+C 兜底前短路。
   if (options?.dragPasteboardSeen) {
@@ -126,9 +126,10 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
         helperResult = j
         helperError = j.err ?? 0
         helperBundleId = j.bundleId || ''
-        if ((j.text || '').trim()) {
+        const axText = String(j.text || '')
+        if (axText.trim() && !axText.includes('\uFFFC')) {
           return {
-            text: j.text || '',
+            text: axText,
             appName: j.appName || '',
             bundleId: j.bundleId || '',
             axError: helperError,
@@ -136,6 +137,17 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
           }
         }
       } catch { /* 落入兜底 */ }
+    }
+  }
+  // 严格文字模式：AX 读不到就是“没识别到文字”，绝不注入 Cmd+C。
+  if (options?.strictTextOnly) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，跳过 Cmd+C', { helperError, hit: helperResult?.hit })
+    return {
+      text: '',
+      appName: helperResult?.appName || '',
+      bundleId: helperBundleId,
+      axError: helperError,
+      simulated: false
     }
   }
   if (process.env.GLM_ASK_DEBUG) console.log('[selection] AX 未取到文本，进入 Cmd+C 兜底', helperError)

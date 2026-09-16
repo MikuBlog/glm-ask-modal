@@ -464,9 +464,13 @@ function startSelectionFlow() {
       }
       hideToolbar()
       const token = ++captureToken
+      const cfg = store.loadConfig()
       // 先捕获、确认拿到文本后再展示工具条（约 300ms）——
       // 截图框选、拖图标、拖窗口等不产生文本复制的操作绝不误弹
-      const meta = await captureSelection(from || pt, { dragPasteboardSeen })
+      const meta = await captureSelection(from || pt, {
+        dragPasteboardSeen,
+        strictTextOnly: cfg.selectionStrictTextOnly !== false
+      })
       if (token !== captureToken) return
       const text = (meta.text || '').trim()
       if (!text) {
@@ -478,7 +482,6 @@ function startSelectionFlow() {
         return
       }
       emptyCaptures = 0
-      const cfg = store.loadConfig()
       if (meta.bundleId && cfg.blacklist.includes(meta.bundleId)) return
       lastCapture = meta
       showToolbar({ text, appName: meta.appName }, pt)

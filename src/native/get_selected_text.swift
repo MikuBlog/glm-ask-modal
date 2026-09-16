@@ -116,6 +116,9 @@ if CommandLine.arguments.count >= 3,
     if let el = hitElementAt(x, y) {
         var hit = elementInfo(el)
         hit["ancestorSupportsSelectedText"] = hitAncestorSupportsSelectedText(el)
+        if let hitText = hit["selectedText"] as? String, (out["text"] as? String ?? "").isEmpty {
+            out["text"] = hitText
+        }
         out["hit"] = hit
     }
 }
