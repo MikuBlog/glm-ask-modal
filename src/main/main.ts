@@ -487,7 +487,7 @@ function startSelectionFlow() {
       const cfg = store.loadConfig()
       // 先捕获、确认拿到文本后再展示工具条（约 300ms）——
       // 截图框选、拖图标、拖窗口等不产生文本复制的操作绝不误弹
-      const meta = await captureSelection(from || pt, {
+      const meta = await captureSelection(from || pt, pt, {
         dragPasteboardSeen,
         strictTextOnly: cfg.selectionStrictTextOnly !== false
       })

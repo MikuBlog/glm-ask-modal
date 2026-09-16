@@ -129,6 +129,12 @@ func elementInfo(_ el: AXUIElement) -> [String: Any] {
     if let text = axString(el, kAXSelectedTextAttribute as CFString) {
         info["selectedText"] = text
     }
+    if let range = axRange(el, kAXSelectedTextRangeAttribute as CFString) {
+        info["selectedTextRange"] = [
+            "location": range.location,
+            "length": range.length
+        ]
+    }
     return info
 }
 
@@ -255,6 +261,15 @@ if let front = frontmost {
         var info = elementInfo(hit)
         info["ancestorSupportsSelectedText"] = hitAncestorSupportsSelectedText(hit)
         out["hit"] = info
+    }
+    if args.count >= 5, let x2 = Float(args[3]), let y2 = Float(args[4]),
+       let endHit = hitElementAt(x2, y2) {
+        var info = elementInfo(endHit)
+        info["ancestorSupportsSelectedText"] = hitAncestorSupportsSelectedText(endHit)
+        out["hitEnd"] = info
+    }
+    if let focused = focusedElement(front.app) {
+        out["focused"] = elementInfo(focused)
     }
 } else {
     out["err"] = -25208

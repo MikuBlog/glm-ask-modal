@@ -116,7 +116,7 @@ function dragPasteboardAdvanced(baseline: Record<string, number> | null, current
   return Object.keys(current).some(name => current[name] > Number(baseline[name] || 0))
 }
 
-async function captureSelection(from?: GesturePoint, options?: { dragPasteboardSeen?: boolean; strictTextOnly?: boolean }) {
+async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?: { dragPasteboardSeen?: boolean; strictTextOnly?: boolean }) {
   // drag-and-drop 会在 drag pasteboard 上写入类型；文本划选不会。
   // 这是最可靠的对象拖拽信号，必须在任何 Cmd+C 兜底前短路。
   if (options?.dragPasteboardSeen) {
@@ -133,7 +133,12 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
     // 原生助手内部已有短轮询；这里再做空转重试，覆盖焦点/AX tree 更新较慢的应用。
     for (const delay of [0, 100, 220]) {
       if (delay) await sleep(delay)
-      const raw = await execBin(helper, from ? [String(from.x), String(from.y)] : [], 900)
+      const startedAt = Date.now()
+      const args = from
+        ? (to ? [String(from.x), String(from.y), String(to.x), String(to.y)] : [String(from.x), String(from.y)])
+        : []
+      const raw = await execBin(helper, args, 900)
+      if (process.env.GLM_ASK_DEBUG) console.log('[selection] helper attempt', { delay, elapsed: Date.now() - startedAt, bytes: raw?.length || 0 })
       if (!raw) continue
       try {
         const j: any = JSON.parse(raw)
@@ -153,30 +158,22 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
       } catch { /* 继续重试 */ }
     }
   }
-  // 严格文字模式：AX 读不到就是“没识别到文字”，绝不注入 Cmd+C。
-  if (options?.strictTextOnly) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，跳过 Cmd+C', { helperError, result: helperResult })
-    return {
-      text: '',
-      appName: helperResult?.appName || '',
-      bundleId: helperBundleId,
-      axError: helperError,
-      simulated: false
-    }
-  }
-  if (process.env.GLM_ASK_DEBUG) console.log('[selection] AX 未取到文本，进入 Cmd+C 兜底', helperError)
-
-  // 只有鼠标按下的位置确实落在文本控件/可暴露 selected text 的元素上时，
-  // 才允许 Cmd+C 兜底。拖拽文件、图片、按钮、窗口标题等非文本对象不注入快捷键。
   const hit: any = helperResult?.hit
+  const hitEnd: any = helperResult?.hitEnd
+  const focused: any = helperResult?.focused
   const dragPasteboards: any = helperResult?.dragPasteboards
-  const dragTypes: string[] = dragPasteboards
-    ? Object.values(dragPasteboards).flatMap((p: any) => Array.isArray(p?.types) ? p.types : [])
-    : []
-  const selectionEvidence = !!(hit && (
-    hit.supportsSelectedText === true ||
-    hit.ancestorSupportsSelectedText === true
-  ))
+  // Cmd+C 兜底必须使用“精确文本控件”证据。AXWebArea/AXGroup/ancestor
+  // 只说明应用支持 AX，不代表鼠标拖的是文本；网页里的按钮、卡片也是这些角色。
+  const preciseTextRoles = new Set([
+    'AXTextArea', 'AXTextField', 'AXSearchField', 'AXComboBox'
+  ])
+  const elementCanContainText = (el: any) => !!el && (
+    preciseTextRoles.has(String(el.role || '')) ||
+    Number(el?.selectedTextRange?.length || 0) > 0
+  )
+  const selectedRangeExists = [hit, hitEnd, focused].some(el => Number(el?.selectedTextRange?.length || 0) > 0)
+  const bothEndpointsInText = elementCanContainText(hit) && elementCanContainText(hitEnd ?? hit)
+  const safeTextFallback = selectedRangeExists || bothEndpointsInText
   const nonTextHitRoles = new Set([
     'AXButton', 'AXImage', 'AXSlider', 'AXCheckBox', 'AXRadioButton',
     'AXPopUpButton', 'AXMenuButton', 'AXTabGroup', 'AXToolbar',
@@ -184,7 +181,7 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
     'AXWindow', 'AXSheet', 'AXStaticText'
   ])
   const isKnownNonText = !!hit && nonTextHitRoles.has(hit.role)
-  if (from && hit && isKnownNonText && !selectionEvidence) {
+  if (from && hit && isKnownNonText && !safeTextFallback) {
     if (process.env.GLM_ASK_DEBUG) console.log('[selection] 非文本拖拽，跳过 Cmd+C', hit)
     return {
       text: '',
@@ -195,10 +192,11 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
     }
   }
 
-  // macOS 正在/刚结束 drag-and-drop 时会有 drag pasteboard。这是文本划选没有的信号；
-  // 借助它避免拖文件、图片、卡片等对象时把 Cmd+C 打进前台应用。
-  if (from && dragTypes.length) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] drag-and-drop pasteboard，跳过 Cmd+C', dragPasteboards)
+  // 严格文字模式不是“永远不做兜底”，而是必须有强文本证据。
+  // 部分原生/自绘输入框不导出 AXSelectedText，但会暴露 AXTextArea 或
+  // selectedTextRange；此时 Cmd+C 是唯一可靠读取方式。
+  if (options?.strictTextOnly && !safeTextFallback) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，无文本证据跳过 Cmd+C', { helperError, hit, hitEnd, focused, dragPasteboards })
     return {
       text: '',
       appName: helperResult?.appName || '',
@@ -207,6 +205,8 @@ async function captureSelection(from?: GesturePoint, options?: { dragPasteboardS
       simulated: false
     }
   }
+
+  if (process.env.GLM_ASK_DEBUG) console.log('[selection] AX 未取到文本，进入文本证据 Cmd+C 兜底', { helperError, hit, hitEnd, focused })
 
   // Finder 双击文件夹/空白处没有文本选区；此时注入 Cmd+C 只会触发系统提示音。
   if (helperBundleId === 'com.apple.finder') {
@@ -318,6 +318,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
   try {
     uIOhook.on('mousedown', e => {
       if (e.button !== 1) return
+      if (process.env.GLM_ASK_DEBUG) console.log('[selection] mousedown', { x: e.x, y: e.y })
       downPoint = { x: e.x, y: e.y, t: Date.now() }
       dragPasteboardSeen = false
       dragPasteboardBaseline = null
@@ -354,6 +355,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       }
       const dist = Math.hypot(e.x - from.x, e.y - from.y)
       const dur = Date.now() - from.t
+      if (process.env.GLM_ASK_DEBUG) console.log('[selection] mouseup', { x: e.x, y: e.y, dist, dur, dragPasteboardSeen })
       if (dist >= DRAG_MIN && dur >= 50) {
         onGesture({ x: e.x, y: e.y }, 'drag', from, dragPasteboardSeen)
         return
@@ -409,7 +411,10 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
   // 首次执行新签名的原生二进制可能触发 macOS 校验，超过 mousedown 后的 250ms
   // 探测窗口。启动时预热一次，避免第一次对象拖拽因 baseline 缺失而误判。
   void probeDragPasteboards(1000).catch(() => {})
-  return { hookStarted: tryStartHook() }
+  const permission = hasAccessibilityPermission()
+  const hookStarted = tryStartHook()
+  if (process.env.GLM_ASK_DEBUG) console.log('[selection] boot', { permission, hookStarted })
+  return { hookStarted }
 }
 
 // 权限检测：以本进程的 uiohook（CGEventTap）能否启动为准。osascript 探测
