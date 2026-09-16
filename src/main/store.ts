@@ -3,6 +3,8 @@ const { app } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
+const MAX_PERSISTED_SESSIONS = 500
+
 const DEFAULTS = {
   apiKey: '',
   // 智谱开放平台 OpenAI 兼容端点；GLM Coding Plan 用户可换成
@@ -56,10 +58,8 @@ function readAllSessions() {
 
 function writeAllSessions(list) {
   fs.mkdirSync(app.getPath('userData'), { recursive: true })
-  fs.writeFileSync(filePath('history.json'), JSON.stringify({ sessions: list.slice(0, 50) }, null, 2))
+  fs.writeFileSync(filePath('history.json'), JSON.stringify({ sessions: list.slice(0, MAX_PERSISTED_SESSIONS) }, null, 2))
 }
-
-const MAX_PERSISTED_SESSIONS = 500
 
 function listSessions(offset = 0, limit = 50) {
   const all = readAllSessions()
