@@ -454,7 +454,7 @@ function startSelectionFlow() {
         }
       } catch {}
     },
-    onGesture: async (pt, kind, from) => {
+    onGesture: async (pt, kind, from, dragPasteboardSeen) => {
       if (zoneAt(pt)) return // 点击/划选发生在自己窗口内
       if (screenshotArmed) {
         // 截图抑制中：不发 Cmd+C。框选拖选结束 = 危险的框选阶段已过，解除抑制
@@ -466,7 +466,7 @@ function startSelectionFlow() {
       const token = ++captureToken
       // 先捕获、确认拿到文本后再展示工具条（约 300ms）——
       // 截图框选、拖图标、拖窗口等不产生文本复制的操作绝不误弹
-      const meta = await captureSelection(from || pt)
+      const meta = await captureSelection(from || pt, { dragPasteboardSeen })
       if (token !== captureToken) return
       const text = (meta.text || '').trim()
       if (!text) {
