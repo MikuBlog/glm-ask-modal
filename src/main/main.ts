@@ -274,6 +274,10 @@ function showAskOnActiveSpace() {
   suppressSpaceHideUntil = askShowRequestedAt + 1800
   debugLog('showAskOnActiveSpace', { token })
   try {
+    // macOS panel 是 nonactivating panel：show/focus 只能把它变成 key window，
+    // 不会激活所属 App。快捷键唤起时若当前活跃 App 是访达，菜单栏就会停在访达。
+    if (process.platform === 'darwin') app.focus({ steal: true })
+
     // macOS 上 all-spaces 窗口隐藏后再 showInactive/show，可能仍停留在旧 Space。
     // 先临时退出 all-spaces，把窗口显式带到当前 Space，再恢复 all-spaces。
     if (win.isVisible()) win.hide()
@@ -282,6 +286,9 @@ function showAskOnActiveSpace() {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     win.show()
     win.focus()
+    // panel show/focus 可能触发一次短暂的应用激活回退；窗口已落到目标 Space
+    // 后再抢一次焦点，保证菜单栏 / Dock 的 active app 稳定停在 GLM问问。
+    if (process.platform === 'darwin') app.focus({ steal: true })
 
     if (win.__restoreSavedSize) {
       setTimeout(() => {
