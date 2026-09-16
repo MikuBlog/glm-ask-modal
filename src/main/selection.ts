@@ -96,7 +96,23 @@ function scheduleClipboardRestore(prev, captured) {
 
 type GesturePoint = { x: number; y: number }
 
-async function captureSelection(from?: GesturePoint) {
+async function probeDragPasteboards(): Promise<boolean> {
+  const helper = helperPath()
+  if (!helper) return false
+  const raw = await execBin(helper, ['--drag-pasteboards'], 250)
+  if (!raw) return false
+  const result = JSON.parse(raw)
+  const boards = result?.dragPasteboards || {}
+  return Object.values(boards).some((board: any) => Array.isArray(board?.types) && board.types.length > 0)
+}
+
+async function captureSelection(from?: GesturePoint, options?: { dragPasteboardSeen?: boolean }) {
+  // drag-and-drop 会在 drag pasteboard 上写入类型；文本划选不会。
+  // 这是最可靠的对象拖拽信号，必须在任何 Cmd+C 兜底前短路。
+  if (options?.dragPasteboardSeen) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] drag session seen，跳过捕获')
+    return { text: '', appName: '', bundleId: '', axError: 0, simulated: false }
+  }
   // 路径 A：原生助手（AX 直读，不碰剪贴板）
   let helperError = -2
   let helperBundleId = ''
@@ -127,6 +143,10 @@ async function captureSelection(from?: GesturePoint) {
   // 只有鼠标按下的位置确实落在文本控件/可暴露 selected text 的元素上时，
   // 才允许 Cmd+C 兜底。拖拽文件、图片、按钮、窗口标题等非文本对象不注入快捷键。
   const hit: any = helperResult?.hit
+  const dragPasteboards: any = helperResult?.dragPasteboards
+  const dragTypes: string[] = dragPasteboards
+    ? Object.values(dragPasteboards).flatMap((p: any) => Array.isArray(p?.types) ? p.types : [])
+    : []
   const selectionEvidence = !!(hit && (
     hit.supportsSelectedText === true ||
     hit.ancestorSupportsSelectedText === true
@@ -135,11 +155,24 @@ async function captureSelection(from?: GesturePoint) {
     'AXButton', 'AXImage', 'AXSlider', 'AXCheckBox', 'AXRadioButton',
     'AXPopUpButton', 'AXMenuButton', 'AXTabGroup', 'AXToolbar',
     'AXMenuBar', 'AXMenuBarItem', 'AXMenuItem', 'AXDockItem',
-    'AXWindow', 'AXSheet'
+    'AXWindow', 'AXSheet', 'AXStaticText'
   ])
   const isKnownNonText = !!hit && nonTextHitRoles.has(hit.role)
   if (from && hit && isKnownNonText && !selectionEvidence) {
     if (process.env.GLM_ASK_DEBUG) console.log('[selection] 非文本拖拽，跳过 Cmd+C', hit)
+    return {
+      text: '',
+      appName: helperResult?.appName || '',
+      bundleId: helperBundleId,
+      axError: helperError,
+      simulated: false
+    }
+  }
+
+  // macOS 正在/刚结束 drag-and-drop 时会有 drag pasteboard。这是文本划选没有的信号；
+  // 借助它避免拖文件、图片、卡片等对象时把 Cmd+C 打进前台应用。
+  if (from && dragTypes.length) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] drag-and-drop pasteboard，跳过 Cmd+C', dragPasteboards)
     return {
       text: '',
       appName: helperResult?.appName || '',
@@ -199,8 +232,11 @@ async function captureSelection(from?: GesturePoint) {
 // 是否弹工具条由捕获结果决定（未复制出文本就不弹）——截图框选、拖图标、
 // 拖窗口等操作不会误弹。
 const DRAG_MIN = 12
-let downPoint = null
-let lastClick = null // { t, x, y, count }
+  let downPoint = null
+  let dragPasteboardSeen = false
+  let dragProbeTimer: any = null
+  let dragProbeRunning = false
+  let lastClick = null // { t, x, y, count }
 let hookRunning = false
 let retryTimer = null
 
@@ -242,16 +278,34 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
     uIOhook.on('mousedown', e => {
       if (e.button !== 1) return
       downPoint = { x: e.x, y: e.y, t: Date.now() }
+      dragPasteboardSeen = false
+      if (!dragProbeTimer) {
+        const probe = async () => {
+          if (dragProbeRunning) return
+          dragProbeRunning = true
+          try {
+            if (await probeDragPasteboards()) dragPasteboardSeen = true
+          } catch {} finally {
+            dragProbeRunning = false
+          }
+        }
+        void probe()
+        dragProbeTimer = setInterval(probe, 120)
+      }
       onPress({ x: e.x, y: e.y })
     })
     uIOhook.on('mouseup', e => {
       if (e.button !== 1 || !downPoint) return
       const from = downPoint
       downPoint = null
+      if (dragProbeTimer) {
+        clearInterval(dragProbeTimer)
+        dragProbeTimer = null
+      }
       const dist = Math.hypot(e.x - from.x, e.y - from.y)
       const dur = Date.now() - from.t
       if (dist >= DRAG_MIN && dur >= 50) {
-        onGesture({ x: e.x, y: e.y }, 'drag', from)
+        onGesture({ x: e.x, y: e.y }, 'drag', from, dragPasteboardSeen)
         return
       }
       // 双击/三击选词：450ms 内同点连续点击
@@ -259,7 +313,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       if (lastClick && now - lastClick.t < 450 && Math.hypot(e.x - lastClick.x, e.y - lastClick.y) < 40) {
         lastClick.count++
         lastClick.t = now
-        if (lastClick.count >= 2) onGesture({ x: e.x, y: e.y }, 'multiclick', from)
+        if (lastClick.count >= 2) onGesture({ x: e.x, y: e.y }, 'multiclick', from, dragPasteboardSeen)
       } else {
         lastClick = { t: now, x: e.x, y: e.y, count: 1 }
       }

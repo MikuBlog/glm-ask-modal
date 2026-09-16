@@ -52,7 +52,38 @@ func hitAncestorSupportsSelectedText(_ start: AXUIElement) -> Bool {
     return false
 }
 
+func pasteboardInfo(_ name: String) -> [String: Any] {
+    let pb = NSPasteboard(name: NSPasteboard.Name(name))
+    return [
+        "changeCount": pb.changeCount,
+        "types": (pb.types ?? []).map { $0.rawValue }
+    ]
+}
+
+func dragPasteboards() -> [String: Any] {
+    return [
+        "drag": pasteboardInfo("Apple CFPasteboard drag"),
+        "generic": pasteboardInfo("Apple CFPasteboard generic"),
+        "promise": pasteboardInfo("Apple CFPasteboard promise")
+    ]
+}
+
 var out: [String: Any] = ["bundleId": "", "appName": "", "text": "", "err": -1]
+
+if CommandLine.arguments.first == "--drag-pasteboards" {
+    out = [
+        "dragPasteboards": [
+            "drag": pasteboardInfo("Apple CFPasteboard drag"),
+            "generic": pasteboardInfo("Apple CFPasteboard generic"),
+            "promise": pasteboardInfo("Apple CFPasteboard promise")
+        ]
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: out),
+       let s = String(data: data, encoding: .utf8) {
+        print(s)
+    }
+    exit(0)
+}
 
 let sys = AXUIElementCreateSystemWide()
 var frontApp: AnyObject?
@@ -88,6 +119,8 @@ if CommandLine.arguments.count >= 3,
         out["hit"] = hit
     }
 }
+
+out["dragPasteboards"] = dragPasteboards()
 
 if let data = try? JSONSerialization.data(withJSONObject: out),
    let s = String(data: data, encoding: .utf8) {
