@@ -52,6 +52,7 @@ sessions.set(session.id, session)
 let pending = session.draft // 当前话题的待发送引用与附件
 let toastTimer = null
 let intentPending = false
+let intentJob = 0
 
 function newSession() {
   return {
@@ -61,7 +62,8 @@ function newSession() {
     updatedAt: Date.now(),
     messages: [],
     draft: { text: '', quote: '', images: [], files: [] },
-    streamingReqId: null
+    streamingReqId: null,
+    requestGeneration: 0
   }
 }
 
@@ -74,11 +76,12 @@ function normalizeSession(s) {
     files: [...(s.draft?.files || [])]
   }
   s.streamingReqId = null
+  s.requestGeneration = 0
   return s
 }
 
 function activeStream(target = session) {
-  return !!target.streamingReqId
+  return !!target?.streamingReqId && streamHandlers.has(target.streamingReqId)
 }
 
 function readDraft() {
@@ -449,13 +452,7 @@ function buildUserActions(m, idx) {
   edit.title = '编辑并重新发送'
   edit.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>'
   edit.onclick = () => {
-    // 编辑会截断后续上下文；若当前正在生成，先中断这次生成再进入编辑。
-    if (activeStream()) {
-      const reqId = session.streamingReqId
-      session.streamingReqId = null
-      window.askAPI.abort(reqId)
-      updateSendBtn()
-    }
+    // 编辑本身不打断当前 turn；只有编辑框里的「发送」才会替换旧回复。
     startEdit(idx)
   }
   row.appendChild(copy)
@@ -610,6 +607,10 @@ function refreshMsgEl(m) {
   const prevTop = els.scroll.scrollTop
   const idx = session.messages.indexOf(m)
   const old = els.thread.querySelector(`[data-id="${m.id}"]`)
+  if (idx < 0) {
+    old?.remove()
+    return
+  }
   if (old) {
     old.replaceWith(renderMsg(m, idx))
     els.scroll.scrollTop = stick ? els.scroll.scrollHeight : prevTop
@@ -621,7 +622,7 @@ function upsertToolTrace(m, tool) {
   const idx = m.tools.findIndex(x => x.id === tool.id)
   if (idx >= 0) m.tools[idx] = { ...m.tools[idx], ...tool, startedAt: m.tools[idx].startedAt || tool.startedAt }
   else m.tools.push(tool)
-  refreshMsgEl(m)
+  if (session.messages.includes(m)) refreshMsgEl(m)
 }
 
 function formatDuration(ms) {
@@ -727,6 +728,8 @@ function updateSendBtn() {
 async function send() {
   const replyStartedAt = Date.now()
   if (intentPending) return
+  const owner = session
+  const jobId = ++intentJob
   const text = els.input.value.trim()
   const quote = pending.quote
   const images = [...pending.images]
@@ -734,17 +737,9 @@ async function send() {
   const hasDraft = !!(text || quote || images.length || files.length)
   if (activeStream()) {
     if (!hasDraft) {
-    window.askAPI.abort(session.streamingReqId)
-      session.streamingReqId = null
-      const active = [...session.messages].reverse().find(m => m.role === 'assistant' && !m.done)
-      if (active) {
-        active.done = true
-        active.aborted = true
-        refreshMsgEl(active)
-      }
-      updateSendBtn()
-    return
-  }
+      supersedeActiveStream()
+      return
+    }
     supersedeActiveStream()
   }
   if (!hasDraft) return
@@ -774,7 +769,7 @@ async function send() {
     tools: []
   }
   intentMsg.replyStartedAt = replyStartedAt
-  session.messages.push(intentMsg)
+  owner.messages.push(intentMsg)
   renderAll()
   saveSession()
 
@@ -786,9 +781,28 @@ async function send() {
       imageOnly: images.length > 0,
       hasBinaryFile: files.some(f => f.binary)
     }, tool => upsertToolTrace(intentMsg, tool))
+  } catch (err) {
+    route = { delegated: false, reason: err?.message || '意图识别失败' }
   } finally {
-    intentPending = false
-    updateSendBtn()
+    if (intentJob === jobId) {
+      intentPending = false
+      updateSendBtn()
+    }
+  }
+
+  // 编辑会在意图识别仍在进行时截断会话。旧发送流程已经失效，
+  // 必须在这里丢弃，否则它完成后会再次 respond，造成双流/双占位。
+  if (intentJob !== jobId || !owner.messages.includes(intentMsg)) {
+    intentMsg.done = true
+    intentMsg.aborted = true
+    intentMsg.reasoningDone = true
+    if (owner.messages.includes(intentMsg)) {
+      const pos = owner.messages.indexOf(intentMsg)
+      owner.messages.splice(pos, 1)
+      if (session === owner) renderAll()
+    }
+    void saveSession(owner)
+    return
   }
 
   intentMsg.done = true
@@ -804,10 +818,26 @@ async function send() {
   respond(route.delegated, intentMsg)
 }
 
-function supersedeActiveStream() {
-  const reqId = session.streamingReqId
+function cancelIntentJob() {
+  intentJob++
+  intentPending = false
+  updateSendBtn()
+}
+
+function clearStreamingRequest(target = session) {
+  const reqId = target.streamingReqId
   if (!reqId) return
-  const active = [...session.messages].reverse().find(m => m.role === 'assistant' && !m.done)
+  streamHandlers.delete(reqId)
+  target.streamingReqId = null
+  target.requestGeneration = (target.requestGeneration || 0) + 1
+  window.askAPI.abort(reqId)
+}
+
+function supersedeActiveStream(target = session) {
+  const reqId = target.streamingReqId
+  if (!reqId) return
+  clearStreamingRequest(target)
+  const active = [...target.messages].reverse().find(m => m.role === 'assistant' && !m.done)
   if (active) {
     active.done = true
     active.reasoningDone = true
@@ -815,13 +845,14 @@ function supersedeActiveStream() {
     active.durationMs = Date.now() - (active.replyStartedAt || Date.now())
     refreshMsgEl(active)
   }
-  window.askAPI.abort(reqId)
-  session.streamingReqId = null
-  updateSendBtn()
+  if (target === session) updateSendBtn()
 }
 
 async function respond(delegated = false, existing = null) {
   const owner = session
+  if (existing && !owner.messages.includes(existing)) return
+  supersedeActiveStream(owner)
+  const generation = ++owner.requestGeneration
   const m = existing || { id: uid(), role: 'assistant', text: '', reasoning: '', done: false, tools: [] }
   if (!existing) owner.messages.push(m)
   m.replyStartedAt = m.replyStartedAt || Date.now()
@@ -945,11 +976,10 @@ async function respond(delegated = false, existing = null) {
     }
   }
   streamHandlers.set(reqId, ctl)
-  streamingCtl = session === owner ? ctl : null
-
   try {
     let summary = agentSummary
     if (!summary) summary = await window.askAPI.localAgents()
+    if (owner.streamingReqId !== reqId || generation !== owner.requestGeneration) return
     agentSummary = summary
     refreshAgentLabel(summary)
     const messages = toApiMessages(owner.messages.slice(0, -1))
@@ -963,6 +993,7 @@ async function respond(delegated = false, existing = null) {
       })
       return
     }
+    if (owner.streamingReqId !== reqId || generation !== owner.requestGeneration) return
     if (summary.totals && (summary.totals.skills + summary.totals.mcps + summary.totals.plugins) > 0) {
       messages.splice(1, 0, { role: 'system', content: summary.promptContext })
     }
@@ -1065,7 +1096,6 @@ async function shouldDelegate(prompt = '', options = {}) {
   const route = await routeRequest(prompt, options)
   return route.delegated
 }
-let streamingCtl = null
 const streamHandlers = new Map()
 
 async function retryFromError(msgId) {
@@ -1140,7 +1170,7 @@ async function appendEditImages(fileList) {
 }
 
 function startEdit(idx) {
-  if (activeStream() || editingId) return
+  if (editingId) return
   const m = session.messages[idx]
   if (!m || m.role !== 'user') return
   editingId = m.id
@@ -1287,22 +1317,70 @@ function startEdit(idx) {
 }
 
 async function saveEdit(m, data) {
+  if (editingId !== m.id) return
   const idx = session.messages.indexOf(m)
+  if (idx < 0) return
+  editingId = null
+  editingData = null
+  editingRender = null
+
+  // 这里才真正取代旧 turn：取消仍在识别的意图和仍在推送的回复。
+  cancelIntentJob()
+  if (activeStream()) supersedeActiveStream()
+
+  const jobId = ++intentJob
+  intentPending = true
+  updateSendBtn()
   m.text = (data.text || '').trim()
   m.quote = (data.quote || '').trim()
   m.images = data.images
   m.files = data.files
-  editingId = null
-  editingData = null
-  editingRender = null
   // 截断该消息之后的所有内容，重新生成
   session.messages = session.messages.slice(0, idx + 1)
-  renderAll()
   const prompt = [m.text, m.quote, ...(m.files || []).map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
-  const delegated = await shouldDelegate(prompt, {
-    hasBinaryFile: (m.files || []).some(f => f.binary)
-  })
-  respond(delegated)
+
+  // 编辑路径和普通发送一样，必须先把意图识别消息挂到当前 turn。
+  // 否则 classifyIntent 的几秒等待里没有任何占位 UI，看起来像“无响应”。
+  const intentMsg: any = {
+    id: uid(),
+    role: 'assistant',
+    text: '',
+    reasoning: '正在分析请求意图…',
+    done: false,
+    tools: [],
+    replyStartedAt: Date.now()
+  }
+  session.messages.push(intentMsg)
+  renderAll()
+  void saveSession(session)
+
+  let route = { delegated: false, reason: '' }
+  try {
+    route = await routeRequest(prompt, {
+      hasBinaryFile: (m.files || []).some(f => f.binary)
+    }, tool => upsertToolTrace(intentMsg, tool))
+  } catch (err) {
+    route = { delegated: false, reason: err?.message || '意图识别失败' }
+    console.warn('[ask] edit route failed:', err)
+  } finally {
+    if (intentJob === jobId) {
+      intentPending = false
+      updateSendBtn()
+    }
+  }
+  if (intentJob !== jobId) return
+
+  intentMsg.done = true
+  intentMsg.reasoning = `意图识别：${route.reason || '已完成'}`
+  refreshMsgEl(intentMsg)
+
+  if (!config.hasKey && !route.delegated) {
+    els.banner.classList.remove('hidden')
+    toast('请先配置 API Key')
+    window.askAPI.openSettings()
+    return
+  }
+  respond(route.delegated, intentMsg)
 }
 
 /* ---------------- 引用 / 附件 ---------------- */
