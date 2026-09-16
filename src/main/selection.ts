@@ -1,7 +1,9 @@
 // 全局划词捕获：
 // 1) uiohook-napi 监听全局鼠标（拖拽松开 / 双击 → 触发一次捕获）
-// 2) 优先调用原生划词助手（AX API 读选中文本，不污染剪贴板；需 swiftc 编译成功）
-// 3) 助手不可用时兜底：JXA 取前台应用 → 模拟 Cmd+C 读剪贴板 → 恢复原剪贴板
+// 2) 优先调用原生划词助手（AX API / Text Marker 读选中文本，不污染剪贴板）
+// 3) AX 读不到时，优先执行前台应用自己的「编辑 ▸ 拷贝」菜单动作，
+//    并在原生助手里备份/恢复完整剪贴板 flavors（对齐 SelectedTextKit/Easydict）
+// 4) 仅在菜单动作不可用且有文本控件证据时，才兜底模拟 Cmd+C
 const { execFile } = require('child_process')
 const path = require('path')
 const fs = require('fs')
@@ -123,7 +125,7 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
     if (process.env.GLM_ASK_DEBUG) console.log('[selection] drag session seen，跳过捕获')
     return { text: '', appName: '', bundleId: '', axError: 0, simulated: false }
   }
-  // 路径 A：原生助手（AX 直读，不碰剪贴板）
+  // 路径 A：原生助手（AX/Text Marker 直读，不碰剪贴板）
   let helperError = -2
   let helperBundleId = ''
   let helperResult: any = null
@@ -178,11 +180,11 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
     'AXButton', 'AXImage', 'AXSlider', 'AXCheckBox', 'AXRadioButton',
     'AXPopUpButton', 'AXMenuButton', 'AXTabGroup', 'AXToolbar',
     'AXMenuBar', 'AXMenuBarItem', 'AXMenuItem', 'AXDockItem',
-    'AXWindow', 'AXSheet', 'AXStaticText'
+    'AXWindow', 'AXSheet'
   ])
   const isKnownNonText = !!hit && nonTextHitRoles.has(hit.role)
   if (from && hit && isKnownNonText && !safeTextFallback) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] 非文本拖拽，跳过 Cmd+C', hit)
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] 非文本拖拽，跳过复制动作', hit)
     return {
       text: '',
       appName: helperResult?.appName || '',
@@ -191,22 +193,6 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
       simulated: false
     }
   }
-
-  // 严格文字模式不是“永远不做兜底”，而是必须有强文本证据。
-  // 部分原生/自绘输入框不导出 AXSelectedText，但会暴露 AXTextArea 或
-  // selectedTextRange；此时 Cmd+C 是唯一可靠读取方式。
-  if (options?.strictTextOnly && !safeTextFallback) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，无文本证据跳过 Cmd+C', { helperError, hit, hitEnd, focused, dragPasteboards })
-    return {
-      text: '',
-      appName: helperResult?.appName || '',
-      bundleId: helperBundleId,
-      axError: helperError,
-      simulated: false
-    }
-  }
-
-  if (process.env.GLM_ASK_DEBUG) console.log('[selection] AX 未取到文本，进入文本证据 Cmd+C 兜底', { helperError, hit, hitEnd, focused })
 
   // Finder 双击文件夹/空白处没有文本选区；此时注入 Cmd+C 只会触发系统提示音。
   if (helperBundleId === 'com.apple.finder') {
@@ -219,10 +205,70 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
     }
   }
 
-  // AX 助手可能在 Edge/部分 Electron 应用里返回 -25204 或空文本。
-  // 这不是“确认没有选中文本”，必须继续走 Cmd+C 兜底，否则工具条完全不出现。
+  // 路径 B：执行目标应用自己的 Edit ▸ Copy 菜单项。它不像全局 Cmd+C
+  // 那样会进入截图/拖拽等场景的事件流；菜单禁用本身也能作为“无选区”的
+  // 强信号。这里不做 AX 文本控件预筛，否则 Safari/自绘文本会继续漏判。
+  let menuDiagnostics: any = null
+  if (helper) {
+    const args = from
+      ? (to ? [String(from.x), String(from.y), String(to.x), String(to.y)] : [String(from.x), String(from.y)])
+      : []
+    const startedAt = Date.now()
+    const raw = await execBin(helper, [...args, '--force-menu-copy'], 1800)
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] menu-copy attempt', { elapsed: Date.now() - startedAt, bytes: raw?.length || 0 })
+    if (raw) {
+      try {
+        const j: any = JSON.parse(raw)
+        helperResult = j
+        helperError = j.err ?? helperError
+        helperBundleId = j.bundleId || helperBundleId
+        menuDiagnostics = j.menu || null
+        const menuText = String(j.text || '')
+        if (menuText.trim()) {
+          return {
+            text: menuText,
+            appName: j.appName || '',
+            bundleId: j.bundleId || '',
+            axError: 0,
+            simulated: true,
+            strategy: 'menu-action'
+          }
+        }
+      } catch {}
+    }
+  }
 
-  // 路径 B：两个 osascript 并行 —— 捕获（Cmd+C + changeCount + 取文本）
+  // 菜单项存在但显式禁用：目标应用已确认当前没有可复制选区，不要再注入
+  // Cmd+C（避免提示音、Finder 激活和对象误复制）。
+  if (menuDiagnostics?.enabled === false) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] Copy 菜单禁用，跳过 Cmd+C', menuDiagnostics)
+    return {
+      text: '',
+      appName: helperResult?.appName || '',
+      bundleId: helperBundleId,
+      axError: helperError,
+      simulated: false,
+      strategy: 'menu-action'
+    }
+  }
+
+  // 严格文字模式只约束最后的全局 Cmd+C 注入；菜单动作属于目标应用自身
+  // 行为，且由非文本拖拽/Finder/禁用菜单三重门槛保护。
+  if (options?.strictTextOnly && !safeTextFallback) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，无文本证据跳过 Cmd+C', { helperError, hit, hitEnd, focused, dragPasteboards, menuDiagnostics })
+    return {
+      text: '',
+      appName: helperResult?.appName || '',
+      bundleId: helperBundleId,
+      axError: helperError,
+      simulated: false,
+      strategy: 'menu-action'
+    }
+  }
+
+  if (process.env.GLM_ASK_DEBUG) console.log('[selection] 菜单动作未取到文本，进入文本证据 Cmd+C 兜底', { helperError, hit, hitEnd, focused, menuDiagnostics })
+
+  // 路径 C：两个 osascript 并行 —— 捕获（Cmd+C + changeCount + 取文本）
   // 与前台应用信息，工具条在确认文本后立即展示（约 300ms）
   const prev = clipboard.readText()
   const [capRaw, metaRaw] = await Promise.all([
@@ -249,7 +295,8 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
     appName: meta.appName || '',
     bundleId: meta.bundleId || '',
     axError: finalText ? 0 : helperError,
-    simulated: true
+    simulated: true,
+    strategy: 'shortcut'
   }
 }
 

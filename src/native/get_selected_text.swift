@@ -1,8 +1,11 @@
-// 可选的原生划词助手：经 AX API 读取前台应用选中文本（不污染剪贴板）。
-// 由 scripts/vendor.js 在 npm install 时尝试用 swiftc 编译；失败则应用走 Cmd+C 兜底。
+// 可选的原生划词助手：AX/Text Marker 直读选中文本；
+// --force-menu-copy 时执行目标应用 Copy 菜单并备份/恢复剪贴板。
 import Foundation
 import ApplicationServices
 import AppKit
+
+let selectedTextMarkerRangeAttribute = "AXSelectedTextMarkerRange" as CFString
+let stringForTextMarkerRangeAttribute = "AXStringForTextMarkerRange" as CFString
 
 func axString(_ el: AXUIElement, _ attr: CFString) -> String? {
     var value: AnyObject?
@@ -20,6 +23,19 @@ func axRange(_ el: AXUIElement, _ attr: CFString) -> CFRange? {
     var range = CFRange()
     guard AXValueGetValue(axValue, .cfRange, &range) else { return nil }
     return range
+}
+
+func axBoolean(_ el: AXUIElement, _ attr: CFString) -> Bool? {
+    var value: AnyObject?
+    guard AXUIElementCopyAttributeValue(el, attr, &value) == .success else { return nil }
+    return value as? Bool
+}
+
+func axChildren(_ el: AXUIElement) -> [AXUIElement] {
+    var value: AnyObject?
+    guard AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &value) == .success,
+          let children = value as? [AXUIElement] else { return [] }
+    return children
 }
 
 func setAXFlag(_ app: AXUIElement, _ name: String) -> Bool {
@@ -44,6 +60,11 @@ func selectedTextOnElement(_ el: AXUIElement) -> String? {
         return direct
     }
 
+    // Safari and some WebKit views expose selection only through text markers.
+    if let text = normalizedSelectedText(selectedTextByTextMarkerRange(el)) {
+        return text
+    }
+
     // Web content often exposes only a range plus the node value. Derive the
     // selected substring from those attributes while keeping the range bounded.
     if let range = axRange(el, kAXSelectedTextRangeAttribute as CFString),
@@ -56,6 +77,21 @@ func selectedTextOnElement(_ el: AXUIElement) -> String? {
     }
 
     return nil
+}
+
+func selectedTextByTextMarkerRange(_ el: AXUIElement) -> String? {
+    var markerRangeValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(el, selectedTextMarkerRangeAttribute, &markerRangeValue) == .success,
+          let markerRange = markerRangeValue else { return nil }
+
+    var textValue: CFTypeRef?
+    guard AXUIElementCopyParameterizedAttributeValue(
+        el,
+        stringForTextMarkerRangeAttribute,
+        markerRange,
+        &textValue
+    ) == .success else { return nil }
+    return textValue as? String
 }
 
 func findSelectedText(_ el: AXUIElement, depth: Int = 0, visited: inout Set<ObjectIdentifier>, budget: inout Int) -> String? {
@@ -124,7 +160,8 @@ func elementInfo(_ el: AXUIElement) -> [String: Any] {
     var info: [String: Any] = [
         "role": axString(el, kAXRoleAttribute as CFString) ?? "",
         "roleDescription": axString(el, kAXRoleDescriptionAttribute as CFString) ?? "",
-        "supportsSelectedText": names.contains(kAXSelectedTextAttribute as String)
+        "supportsSelectedText": names.contains(kAXSelectedTextAttribute as String),
+        "supportsTextMarker": names.contains(selectedTextMarkerRangeAttribute as String)
     ]
     if let text = axString(el, kAXSelectedTextAttribute as CFString) {
         info["selectedText"] = text
@@ -180,6 +217,142 @@ func dragPasteboards() -> [String: Any] {
     ]
 }
 
+let copyMenuTitles: Set<String> = [
+    "Copy", "拷贝", "复制", "拷貝", "複製", "コピー", "복사",
+    "Copier", "Copiar", "Copia", "Kopieren", "Копировать"
+]
+
+func isCopyMenuItem(_ el: AXUIElement) -> Bool {
+    if axString(el, kAXIdentifierAttribute as CFString) == "copy:" { return true }
+    guard let title = axString(el, kAXTitleAttribute as CFString),
+          copyMenuTitles.contains(title) else { return false }
+    // A bare localized title can collide with custom menu items. Require the
+    // standard Cmd+C marker unless the app omits both identifier and shortcut.
+    let cmdChar = axString(el, "AXMenuItemCmdChar" as CFString)
+    return cmdChar == nil || cmdChar?.lowercased() == "c"
+}
+
+func findCopyMenuItem(in root: AXUIElement, budget: Int = 1200) -> AXUIElement? {
+    var stack: [(element: AXUIElement, depth: Int)] = [(root, 0)]
+    var visited = Set<ObjectIdentifier>()
+    var remaining = budget
+
+    while !stack.isEmpty, remaining > 0 {
+        let item = stack.removeLast()
+        remaining -= 1
+        let key = ObjectIdentifier(item.element)
+        guard !visited.contains(key) else { continue }
+        visited.insert(key)
+
+        if isCopyMenuItem(item.element) { return item.element }
+        guard item.depth < 8 else { continue }
+        for child in axChildren(item.element).reversed() {
+            stack.append((child, item.depth + 1))
+        }
+    }
+    return nil
+}
+
+func findCopyMenuItem(inApp app: AXUIElement) -> AXUIElement? {
+    var menuBarValue: AnyObject?
+    guard AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarValue) == .success,
+          let menuBarObject = menuBarValue else { return nil }
+    let menuBar = menuBarObject as! AXUIElement
+
+    let menus = axChildren(menuBar)
+    // The Edit menu is normally the fourth top-level menu. Search outward from
+    // it, then cover the remaining menus for apps with non-standard layouts.
+    let preferred = [3, 2, 4, 1, 5, 0, 6].filter { $0 < menus.count }
+    let order = preferred + menus.indices.filter { !preferred.contains($0) }
+    for index in order {
+        if let item = findCopyMenuItem(in: menus[index]) { return item }
+    }
+    return nil
+}
+
+func backupPasteboard() -> [[String: Data]] {
+    guard let items = NSPasteboard.general.pasteboardItems else { return [] }
+    return items.map { item in
+        var flavors: [String: Data] = [:]
+        for type in item.types {
+            if let data = item.data(forType: type) {
+                flavors[type.rawValue] = data
+            }
+        }
+        return flavors
+    }
+}
+
+func restorePasteboard(_ items: [[String: Data]]) -> Bool {
+    guard !items.isEmpty else { return false }
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    let restored = items.map { flavors in
+        let item = NSPasteboardItem()
+        for (type, data) in flavors { item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type)) }
+        return item
+    }
+    return pasteboard.writeObjects(restored)
+}
+
+func copySelectedTextWithMenuAction(_ app: AXUIElement) -> (text: String?, info: [String: Any]) {
+    guard let item = findCopyMenuItem(inApp: app) else {
+        return (nil, ["found": false, "state": "missing"])
+    }
+    AXUIElementSetMessagingTimeout(item, 0.5)
+
+    var info: [String: Any] = [
+        "found": true,
+        "title": axString(item, kAXTitleAttribute as CFString) ?? "",
+        "identifier": axString(item, kAXIdentifierAttribute as CFString) ?? ""
+    ]
+    if let enabled = axBoolean(item, kAXEnabledAttribute as CFString) {
+        info["enabled"] = enabled
+        guard enabled else { return (nil, info) }
+    } else {
+        // Most apps omit AXEnabled for menu items that are available. Treat an
+        // explicit false as disabled, but do not reject apps that omit it.
+        info["enabled"] = true
+    }
+
+    let pasteboard = NSPasteboard.general
+    let backup = backupPasteboard()
+    let initialChangeCount = pasteboard.changeCount
+    let pressError = AXUIElementPerformAction(item, "AXPress" as CFString)
+    info["pressError"] = Int(pressError.rawValue)
+    guard pressError == .success else { return (nil, info) }
+
+    var captured: String?
+    var acceptedChangeCount = initialChangeCount
+    var capturedAt: Date?
+    let deadline = Date().addingTimeInterval(bundleId == "com.apple.Safari" ? 0.5 : 0.3)
+    while Date() < deadline {
+        if pasteboard.changeCount != initialChangeCount {
+            if captured == nil,
+               let text = normalizedSelectedText(pasteboard.string(forType: .string)) {
+                captured = text
+                acceptedChangeCount = pasteboard.changeCount
+                capturedAt = Date()
+            }
+        }
+        if let capturedAt, Date().timeIntervalSince(capturedAt) >= 0.05 { break }
+        usleep(20_000)
+    }
+
+    let changed = pasteboard.changeCount != initialChangeCount
+    let effectivelyEmpty = (pasteboard.types ?? []).isEmpty ||
+        ((pasteboard.types ?? []).count == 1 && (pasteboard.string(forType: .string) ?? "").isEmpty)
+    let thirdPartyChanged = pasteboard.changeCount != acceptedChangeCount
+    let shouldRestore = !backup.isEmpty && changed && (!thirdPartyChanged || effectivelyEmpty)
+    info["changed"] = changed
+    info["restored"] = false
+    if shouldRestore {
+        info["restoreAttempted"] = true
+        info["restored"] = restorePasteboard(backup)
+    }
+    return (captured, info)
+}
+
 var out: [String: Any] = ["bundleId": "", "appName": "", "text": "", "err": -1]
 
 if CommandLine.arguments.dropFirst().contains("--drag-pasteboards") {
@@ -199,6 +372,8 @@ if CommandLine.arguments.dropFirst().contains("--drag-pasteboards") {
 
 let frontmost = frontmostAXApp()
 let bundleId = frontmost?.running.bundleIdentifier ?? ""
+let args = CommandLine.arguments
+let forceMenuCopy = args.dropFirst().contains("--force-menu-copy")
 
 func querySelectedText(app: AXUIElement, hit: AXUIElement?) -> String? {
     if let text = selectedTextOnElement(app) { return text }
@@ -218,7 +393,6 @@ if let front = frontmost {
     // assistive client opts in. Set the flag before the first AX query.
     let manualEnabled = setAXFlag(front.app, "AXManualAccessibility")
 
-    let args = CommandLine.arguments
     let hitElement: AXUIElement?
     if args.count >= 3, let x = Float(args[1]), let y = Float(args[2]) {
         hitElement = hitElementAt(x, y)
@@ -229,14 +403,14 @@ if let front = frontmost {
         AXUIElementSetMessagingTimeout(hit, 0.2)
     }
 
-    var text = querySelectedText(app: front.app, hit: hitElement)
-    if text == nil {
+    var text = forceMenuCopy ? nil : querySelectedText(app: front.app, hit: hitElement)
+    if text == nil && !forceMenuCopy {
         // Selection state can be committed slightly after mouse-up in
         // Chromium/Electron. Poll once before deciding the hit was non-text.
         usleep(50_000)
         text = querySelectedText(app: front.app, hit: hitElement)
     }
-    if text == nil {
+    if text == nil && !forceMenuCopy {
         // AXManualAccessibility is normally sufficient for Electron. Chromium
         // browsers sometimes need the legacy enhanced-UI switch as a retry.
         let shouldEnhance = isLikelyChromiumBrowser(bundleId)
@@ -253,8 +427,26 @@ if let front = frontmost {
     if let text = text {
         out["text"] = text
         out["err"] = 0
+        out["strategy"] = "accessibility"
     } else {
         out["err"] = -25204
+    }
+
+    // This mode is used after the Electron main process has excluded object
+    // drags and known non-text targets. It mirrors SelectedTextKit's preferred
+    // fallback: press the target app's own Edit > Copy item instead of sending
+    // a global Cmd+C event.
+    if text == nil && forceMenuCopy {
+        let menuResult = copySelectedTextWithMenuAction(front.app)
+        out["menu"] = menuResult.info
+        if let text = menuResult.text {
+            out["text"] = text
+            out["err"] = 0
+            out["strategy"] = "menu-action"
+        }
+        if let restored = menuResult.info["restored"] as? Bool {
+            out["pasteboardRestored"] = restored
+        }
     }
 
     if let hit = hitElement {

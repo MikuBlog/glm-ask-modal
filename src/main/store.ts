@@ -19,7 +19,7 @@ const DEFAULTS = {
   localAgent: 'auto', // auto/zcode/claude/codex/direct
   intentModel: 'glm-5.3-flash', // 独立意图识别模型
   agentExec: true, // 本地 Agent 是否获得真实执行权限（Skill / MCP / CLI）
-  selectionStrictTextOnly: true, // 只信任 AX 读取到的文本；AX 读不到时不注入 Cmd+C
+  selectionStrictTextOnly: true, // 菜单动作可兜底；仅在有文本证据时才允许全局 Cmd+C
   askWidth: 780, // 问一问弹窗持久化宽度
   askHeight: 640 // 问一问弹窗持久化高度
 }
