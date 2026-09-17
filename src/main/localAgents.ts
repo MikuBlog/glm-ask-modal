@@ -262,6 +262,7 @@ function buildAgentPrompt(messages, summary, execute = false) {
     parts.push(`${msg.role.toUpperCase()}:\n${content}`)
   }
   parts.push('</conversation>')
+  parts.push('若对话包含「[图片附件]…本地路径」，必须先用本机 Agent 的图片读取 / 视觉 Skill / MCP 完成识别，再基于识别结果解答；不要凭文件名猜测图片内容。')
   parts.push(execute
     ? '请继续处理最后一个用户请求；命中本机能力时必须实际调用 Skill/Plugin/MCP/CLI，完成操作后返回真实结果、链接或错误详情。除非用户明确确认，不要给高风险写入命令追加 --yes。'
     : '请继续处理最后一个用户请求；先给出执行计划，不要执行写入操作。')

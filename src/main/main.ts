@@ -1,6 +1,7 @@
 // 主进程：窗口编排 + IPC + 划词流程
 const { app, BrowserWindow, ipcMain, screen, clipboard, globalShortcut, Menu, shell, dialog, nativeImage, nativeTheme, systemPreferences } = require('electron')
 const { execFile } = require('child_process')
+const { randomBytes } = require('crypto')
 const { Notification: ElectronNotification } = require('electron')
 const path = require('path')
 const fs = require('fs')
@@ -40,6 +41,10 @@ let emptyCaptures = 0
 // 解除时机：Esc/回车（取消/完成）、框选拖选结束（危险期已过）、
 // 武装 3 秒后的点击（进入标注/完成阶段）、硬上限 12 秒。
 const SCREENSHOT_SUPPRESS_MS = +(process.env.GLM_SHOT_MS) || 12000
+// 所有划词手势共用的稳定期：双击的两次 mouseup/微小 drag 在此期内只保留最后一次。
+const SELECTION_SETTLE_MS = 50
+// 多击捕获立即开始，但展示保持同一条时间线；慢策略不再叠加防抖等待。
+const MULTICLICK_PRESENT_MS = 500
 let screenshotArmed = false
 let screenshotArmedAt = 0
 let hintSent = false
@@ -496,6 +501,10 @@ function startSelectionFlow() {
       hideToolbar()
       const token = ++captureToken
       const cfg = store.loadConfig()
+      const gestureStartedAt = Date.now()
+      if (process.env.GLM_ASK_DEBUG) debugLog('selection gesture settle', { kind, x: pt.x, y: pt.y })
+      await new Promise(resolve => setTimeout(resolve, SELECTION_SETTLE_MS))
+      if (token !== captureToken) return
       // 先捕获、确认拿到文本后再展示工具条（约 300ms）——
       // 截图框选、拖图标、拖窗口等不产生文本复制的操作绝不误弹
       const meta = await captureSelection(from || pt, pt, {
@@ -513,6 +522,14 @@ function startSelectionFlow() {
       }
       emptyCaptures = 0
       if (meta.bundleId && cfg.blacklist.includes(meta.bundleId)) return
+      if (kind === 'multiclick') {
+        const waitMs = MULTICLICK_PRESENT_MS - (Date.now() - gestureStartedAt)
+        if (waitMs > 0) {
+          if (process.env.GLM_ASK_DEBUG) debugLog('multiclick presentation hold', { waitMs, strategy: meta.strategy })
+          await new Promise(resolve => setTimeout(resolve, waitMs))
+          if (token !== captureToken) return
+        }
+      }
       lastCapture = meta
       showToolbar({ text, appName: meta.appName }, pt)
     }
@@ -769,7 +786,11 @@ function registerIpc() {
               '.webp': 'image/webp',
               '.bmp': 'image/bmp'
             }[path.extname(p).toLowerCase()] || 'image/png'
-            images.push(`data:${mime};base64,${fs.readFileSync(p).toString('base64')}`)
+            images.push({
+              src: `data:${mime};base64,${fs.readFileSync(p).toString('base64')}`,
+              path: p,
+              name: path.basename(p)
+            })
           } catch (err) {
             return { ok: false, error: err.message }
           }
@@ -805,6 +826,23 @@ function registerIpc() {
       return { ok: true, files }
     } finally {
       filePickerCount--
+    }
+  })
+
+  // GLM-5.3 只接受 text content；粘贴图片先落盘，把本地路径交给本地 Agent 识别。
+  ipcMain.handle('ask:save-image', (e, dataUrl, name = 'pasted-image') => {
+    const match = /^data:(image\/(?:png|jpeg|gif|webp|bmp));base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || ''))
+    if (!match) return { ok: false, error: '不支持的图片格式' }
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp' }[match[1]]
+    const dir = path.join(app.getPath('userData'), 'attachments')
+    const file = `${Date.now()}-${randomBytes(4).toString('hex')}.${ext}`
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+      const target = path.join(dir, file)
+      fs.writeFileSync(target, Buffer.from(match[2], 'base64'))
+      return { ok: true, image: { src: String(dataUrl), path: target, name: path.basename(String(name)) || file } }
+    } catch (err) {
+      return { ok: false, error: err.message }
     }
   })
 

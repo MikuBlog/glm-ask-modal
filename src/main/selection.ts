@@ -337,19 +337,17 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       }
       const dist = Math.hypot(e.x - from.x, e.y - from.y)
       const dur = Date.now() - from.t
-      if (process.env.GLM_ASK_DEBUG) console.log('[selection] mouseup', { x: e.x, y: e.y, dist, dur, dragPasteboardSeen })
-      if (dist >= DRAG_MIN && dur >= 20) {
-        onGesture({ x: e.x, y: e.y }, 'drag', from, dragPasteboardSeen)
-        return
-      }
-      // 双击/三击选词：450ms 内同点连续点击
+      const clicks = Math.max(1, Number(e.clicks) || 1)
+      if (process.env.GLM_ASK_DEBUG) console.log('[selection] mouseup', { x: e.x, y: e.y, dist, dur, clicks, dragPasteboardSeen })
+
       const now = Date.now()
       if (lastClick && now - lastClick.t < 450 && Math.hypot(e.x - lastClick.x, e.y - lastClick.y) < 40) {
         lastClick.count++
         lastClick.t = now
-        if (lastClick.count >= 2) onGesture({ x: e.x, y: e.y }, 'multiclick', from, dragPasteboardSeen)
+        if (lastClick.count >= 2 || clicks >= 2) onGesture({ x: e.x, y: e.y }, 'multiclick', from, dragPasteboardSeen)
       } else {
         lastClick = { t: now, x: e.x, y: e.y, count: 1 }
+        if (dist >= DRAG_MIN && dur >= 20) onGesture({ x: e.x, y: e.y }, 'drag', from, dragPasteboardSeen)
       }
     })
     // 键盘监听：

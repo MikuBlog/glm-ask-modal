@@ -3,7 +3,7 @@
    - 引用选中内容提问 / 自动追问（弹窗内划词）
    - 流式回复（含思考过程）、终止、重新生成
    - 编辑用户消息并重发
-   - 图片（多模态）与文本文件附件
+   - 图片（本地 Agent 视觉链路）与文本文件附件
    - 新话题 / 历史话题 / 模型切换 */
 const $ = s => document.querySelector(s)
 
@@ -67,12 +67,35 @@ function newSession() {
   }
 }
 
+function normalizeImage(image) {
+  if (typeof image === 'string') return { src: image, path: '', name: '' }
+  return {
+    src: image?.src || image?.url || '',
+    path: image?.path || '',
+    name: image?.name || ''
+  }
+}
+
+function normalizeImages(images) {
+  return (images || []).map(normalizeImage).filter(x => x.src)
+}
+
+function imagePrompt(images) {
+  return normalizeImages(images).map((img, i) => {
+    const where = img.path ? `本地路径 ${img.path}` : '本地路径不可用'
+    return `[图片附件 ${i + 1}${img.name ? `：${img.name}` : ''}；${where}]`
+  }).join('\n')
+}
+
 function normalizeSession(s) {
   s.messages = s.messages || []
+  s.messages.forEach(m => {
+    if (m.images) m.images = normalizeImages(m.images)
+  })
   s.draft = {
     text: s.draft?.text || '',
     quote: s.draft?.quote || '',
-    images: [...(s.draft?.images || [])],
+    images: normalizeImages(s.draft?.images),
     files: [...(s.draft?.files || [])]
   }
   s.streamingReqId = null
@@ -88,7 +111,7 @@ function readDraft() {
   return {
     text: els.input.value,
     quote: pending.quote || '',
-    images: [...(pending.images || [])],
+    images: normalizeImages(pending.images),
     files: [...(pending.files || [])]
   }
 }
@@ -97,7 +120,7 @@ function writeDraft(draft: any = {}) {
   pending = session.draft
   pending.text = draft.text || ''
   pending.quote = draft.quote || ''
-  pending.images = [...(draft.images || [])]
+  pending.images = normalizeImages(draft.images)
   pending.files = [...(draft.files || [])]
   els.input.value = pending.text
   autoGrow()
@@ -133,12 +156,14 @@ function buildUserContent(m) {
   } else if (m.quote) {
     text = `[选中的内容]\n${m.quote}\n\n[我的问题]\n${text || '请针对以上选中的内容进行回答'}`
   }
+  const imgs = imagePrompt(m.images)
+  if (imgs) text += `\n\n${imgs}`
   for (const f of m.files || []) {
     text += f.text != null
       ? `\n\n[附件文件：${f.name}]\n${f.text}`
       : `\n\n[二进制附件：${f.name}；大小 ${Math.max(1, Math.round((f.size || 0) / 1024))}KB；本地路径 ${f.path || '未知'}]`
   }
-  return { text, images: m.images || [] }
+  return { text }
 }
 
 function toApiMessages(messages: any[]): any[] {
@@ -148,10 +173,8 @@ function toApiMessages(messages: any[]): any[] {
   }]
   for (const m of messages) {
     if (m.role === 'user') {
-      const { text, images } = buildUserContent(m)
-      const parts: any[] = [{ type: 'text', text }]
-      for (const url of images) parts.push({ type: 'image_url', image_url: { url } })
-      out.push({ role: 'user', content: parts })
+      const { text } = buildUserContent(m)
+      out.push({ role: 'user', content: text })
     } else if (typeof m.text === 'string' && m.text) {
       out.push({ role: 'assistant', content: m.text })
     }
@@ -357,9 +380,11 @@ function renderMsg(m, idx) {
     if (m.images && m.images.length) {
       const imgs = document.createElement('div')
       imgs.className = 'u-images'
-      for (const src of m.images) {
+      for (const raw of m.images) {
+        const image = normalizeImage(raw)
         const im = document.createElement('img')
-        im.src = src
+        im.src = image.src
+        if (image.path) im.title = image.path
         imgs.appendChild(im)
       }
       bubble.appendChild(imgs)
@@ -732,7 +757,7 @@ async function send() {
   const jobId = ++intentJob
   const text = els.input.value.trim()
   const quote = pending.quote
-  const images = [...pending.images]
+  const images = normalizeImages(pending.images)
   const files = [...pending.files]
   const hasDraft = !!(text || quote || images.length || files.length)
   if (activeStream()) {
@@ -756,8 +781,7 @@ async function send() {
   els.thread.appendChild(el)
   els.scroll.scrollTop = els.scroll.scrollHeight
 
-  // 图片请求必须走多模态模型；本地 Agent 通道当前只接收文本，不能处理图片。
-  const toolPrompt = [text, quote, ...files.map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
+  const toolPrompt = [text, quote, imagePrompt(images), ...files.map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
 
   // 意图识别过程也作为回复链路的一部分展示；后续响应会复用这条 assistant 消息。
   const intentMsg: any = {
@@ -775,10 +799,10 @@ async function send() {
 
   intentPending = true
   updateSendBtn()
-  let route = { delegated: false, reason: '' }
+  let route: any = { delegated: false, reason: '' }
   try {
     route = await routeRequest(toolPrompt, {
-      imageOnly: images.length > 0,
+      hasImage: images.length > 0,
       hasBinaryFile: files.some(f => f.binary)
     }, tool => upsertToolTrace(intentMsg, tool))
   } catch (err) {
@@ -815,7 +839,8 @@ async function send() {
     window.askAPI.openSettings()
     return
   }
-  respond(route.delegated, intentMsg)
+  intentMsg.routeAgent = route.agent || null
+  respond(route.delegated, intentMsg, route.agent)
 }
 
 function cancelIntentJob() {
@@ -848,9 +873,10 @@ function supersedeActiveStream(target = session) {
   if (target === session) updateSendBtn()
 }
 
-async function respond(delegated = false, existing = null) {
+async function respond(delegated = false, existing = null, requestedAgent = null) {
   const owner = session
   if (existing && !owner.messages.includes(existing)) return
+  let routeAgent = requestedAgent || existing?.routeAgent || null
   supersedeActiveStream(owner)
   const generation = ++owner.requestGeneration
   const m = existing || { id: uid(), role: 'assistant', text: '', reasoning: '', done: false, tools: [] }
@@ -872,7 +898,7 @@ async function respond(delegated = false, existing = null) {
   streamHandlers.set(reqId, null)
   m.__started = false
   if (delegated) {
-    const routeNote = `已路由到本机 Agent（${config.localAgent === 'auto' ? '自动选择' : config.localAgent}），正在调用 Skill / MCP / CLI…`
+    const routeNote = `已路由到本机 Agent（${routeAgent || (config.localAgent === 'auto' ? '自动选择' : config.localAgent)}），正在调用 Skill / MCP / CLI…`
     m.reasoning = m.reasoning ? `${m.reasoning}\n${routeNote}` : routeNote
     m.__rsPainted = true
     const preview = els.thread.querySelector(`[data-id="${m.id}"] .rs-preview`)
@@ -983,11 +1009,23 @@ async function respond(delegated = false, existing = null) {
     agentSummary = summary
     refreshAgentLabel(summary)
     const messages = toApiMessages(owner.messages.slice(0, -1))
+    const lastUser = [...owner.messages.slice(0, -1)].reverse().find(m => m.role === 'user')
+    const manualAgentAvailable = config.localAgent === 'auto' || summary.available?.includes(config.localAgent)
+    if (!delegated && manualAgentAvailable && (lastUser?.images || []).length && config.localAgent !== 'direct' && summary.available?.length) {
+      delegated = true
+      routeAgent = config.localAgent !== 'auto' && summary.available.includes(config.localAgent)
+        ? config.localAgent
+        : (summary.available.includes('claude') ? 'claude' : summary.preferred)
+      m.reasoning = m.reasoning
+        ? `${m.reasoning}\n图片请求已改由本机 Agent（${routeAgent}）识别。`
+        : `图片请求已改由本机 Agent（${routeAgent}）识别。`
+      refreshMsgEl(m)
+    }
     if (delegated) {
       await window.askAPI.localAgentRun({
         reqId,
         messages,
-        agent: config.localAgent,
+        agent: routeAgent || config.localAgent,
         includeContext: true,
         execute: config.agentExec !== false
       })
@@ -1041,11 +1079,6 @@ async function routeRequest(prompt = '', options: any = {}, onIntent?: any) {
     })
   }
 
-  if (options.imageOnly) {
-    emitIntent('done', '图片请求将走多模态模型，不路由本地 Agent。')
-    return { delegated: false, reason: '图片请求使用多模态模型' }
-  }
-
   if (config.localAgent === 'direct') {
     emitIntent('done', '当前已选择「仅 GLM」，不路由本地 Agent。')
     return { delegated: false, reason: '已选择仅 GLM' }
@@ -1061,9 +1094,19 @@ async function routeRequest(prompt = '', options: any = {}, onIntent?: any) {
     return { delegated: available, reason: available ? `手动选择 ${config.localAgent}` : '所选 Agent 不可用' }
   }
 
+  if (options.hasImage && agentSummary.preferred) {
+    // Claude 的 Read 工具可直接读取本地图片；没有 Claude 时复用其余本地 Agent 的视觉 Skill/MCP。
+    const agent = agentSummary.available?.includes('claude') ? 'claude' : agentSummary.preferred
+    emitIntent('done', `图片请求将交给本机 ${agent} 识别后解答。`)
+    return { delegated: true, agent, reason: `图片请求使用本地 Agent（${agent}）` }
+  }
+
   if (!agentSummary.preferred) {
-    emitIntent('done', '未发现可用的本机 Agent，继续使用 GLM 直答。')
-    return { delegated: false, reason: '没有可用 Agent' }
+    const image = !!options.hasImage
+    emitIntent(image ? 'error' : 'done', image
+      ? '未发现可用的本机 Agent；GLM-5.3 不支持图片输入，只能基于图片备注文本回复。'
+      : '未发现可用的本机 Agent，继续使用 GLM 直答。')
+    return { delegated: false, reason: image ? '没有可用 Agent，图片无法识别' : '没有可用 Agent' }
   }
 
   emitIntent('running', '正在由独立模型分析当前请求与最近上下文…')
@@ -1162,7 +1205,9 @@ async function appendEditImages(fileList) {
       reader.onerror = () => reject(reader.error)
       reader.readAsDataURL(file)
     })
-    editingData.images.push(url)
+    const saved = await window.askAPI.saveImage(url, file.name)
+    if (saved?.ok) editingData.images.push(saved.image)
+    else toast(saved?.error || '图片保存失败')
   }
   editingRender()
   updateSendBtn()
@@ -1179,7 +1224,7 @@ function startEdit(idx) {
   const data = {
     text: m.text || '',
     quote: m.quote || '',
-    images: [...(m.images || [])],
+    images: normalizeImages(m.images),
     files: [...(m.files || [])]
   }
   editingData = data
@@ -1207,13 +1252,14 @@ function startEdit(idx) {
     if (data.images.length) {
       const imgs = document.createElement('div')
       imgs.className = 'u-images edit-images'
-      data.images.forEach((src, i) => {
+      data.images.forEach((raw, i) => {
+        const image = normalizeImage(raw)
         const item = document.createElement('div')
         item.className = 'edit-img'
         const im = document.createElement('img')
-        im.src = src
-        im.title = '点击预览'
-        im.onclick = () => openImagePreview(src)
+        im.src = image.src
+        im.title = image.path ? `${image.path}\n点击预览` : '点击预览'
+        im.onclick = () => openImagePreview(image.src)
         const x = document.createElement('button')
         x.className = 'chip-x'
         x.title = '移除图片'
@@ -1333,11 +1379,11 @@ async function saveEdit(m, data) {
   updateSendBtn()
   m.text = (data.text || '').trim()
   m.quote = (data.quote || '').trim()
-  m.images = data.images
+  m.images = normalizeImages(data.images)
   m.files = data.files
   // 截断该消息之后的所有内容，重新生成
   session.messages = session.messages.slice(0, idx + 1)
-  const prompt = [m.text, m.quote, ...(m.files || []).map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
+  const prompt = [m.text, m.quote, imagePrompt(m.images), ...(m.files || []).map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
 
   // 编辑路径和普通发送一样，必须先把意图识别消息挂到当前 turn。
   // 否则 classifyIntent 的几秒等待里没有任何占位 UI，看起来像“无响应”。
@@ -1354,10 +1400,11 @@ async function saveEdit(m, data) {
   renderAll()
   void saveSession(session)
 
-  let route = { delegated: false, reason: '' }
+  let route: any = { delegated: false, reason: '' }
   try {
     route = await routeRequest(prompt, {
-      hasBinaryFile: (m.files || []).some(f => f.binary)
+      hasBinaryFile: (m.files || []).some(f => f.binary),
+      hasImage: !!(m.images || []).length
     }, tool => upsertToolTrace(intentMsg, tool))
   } catch (err) {
     route = { delegated: false, reason: err?.message || '意图识别失败' }
@@ -1380,7 +1427,8 @@ async function saveEdit(m, data) {
     window.askAPI.openSettings()
     return
   }
-  respond(route.delegated, intentMsg)
+  intentMsg.routeAgent = route.agent || null
+  respond(route.delegated, intentMsg, route.agent)
 }
 
 /* ---------------- 引用 / 附件 ---------------- */
@@ -1409,11 +1457,13 @@ function clearPending() {
 
 function renderAttachChips() {
   els.attachChips.innerHTML = ''
-  pending.images.forEach((src, i) => {
+  pending.images.forEach((raw, i) => {
+    const image = normalizeImage(raw)
     const d = document.createElement('div')
     d.className = 'attach-img'
     const im = document.createElement('img')
-    im.src = src
+    im.src = image.src
+    if (image.path) im.title = image.path
     const x = document.createElement('button')
     x.className = 'chip-x'
     x.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>'
@@ -1441,10 +1491,11 @@ function renderAttachChips() {
   els.chips.classList.toggle('hidden', !any)
 }
 
-async function addImages(urls) {
-  if (!urls.length) return
-  if (pending.images.length + urls.length > 6) return toast('最多添加 6 张图片')
-  pending.images.push(...urls)
+async function addImages(input) {
+  const images = normalizeImages(input)
+  if (!images.length) return
+  if (pending.images.length + images.length > 6) return toast('最多添加 6 张图片')
+  pending.images.push(...images)
   renderAttachChips()
   updateSendBtn()
 }
@@ -1877,19 +1928,22 @@ els.input.addEventListener('paste', e => {
   const imgs = items.filter(i => i.type.startsWith('image/'))
   if (imgs.length) {
     e.preventDefault()
-    const urls = []
-    let loaded = 0
-    imgs.forEach(item => {
-      const file = item.getAsFile()
-      if (!file) return
-      if (file.size > 10 * 1024 * 1024) { toast('文件需小于 10MB'); return }
-      const reader = new FileReader()
-      reader.onload = () => {
-        urls.push(reader.result)
-        if (++loaded === imgs.length) addImages(urls)
+    void (async () => {
+      for (const item of imgs) {
+        const file = item.getAsFile()
+        if (!file) continue
+        if (file.size > 10 * 1024 * 1024) { toast('文件需小于 10MB'); continue }
+        const url = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(file)
+        })
+        const saved = await window.askAPI.saveImage(url, file.name)
+        if (saved?.ok) await addImages([saved.image])
+        else toast(saved?.error || '图片保存失败')
       }
-      reader.readAsDataURL(file)
-    })
+    })().catch(err => toast(err?.message || '图片读取失败'))
   }
 })
 
