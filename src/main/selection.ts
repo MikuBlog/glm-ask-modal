@@ -10,8 +10,6 @@ const fs = require('fs')
 const { screen, systemPreferences } = require('electron')
 const { uIOhook, UiohookKey } = require('uiohook-napi')
 
-const sleep = ms => new Promise(r => setTimeout(r, ms))
-
 function execBin(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise(resolve => {
     execFile(cmd, args, { timeout }, (err, stdout) => {
@@ -63,17 +61,15 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
   let helperResult: any = null
   const helper = helperPath()
   if (helper) {
-    // Chromium/Electron 偶尔在 mouse-up 后才提交 selectedText/selectedTextRange。
-    // 原生助手内部已有短轮询；这里再做空转重试，覆盖焦点/AX tree 更新较慢的应用。
-    for (const delay of [0, 100, 220]) {
-      if (delay) await sleep(delay)
-      const startedAt = Date.now()
-      const args = from
-        ? (to ? [String(from.x), String(from.y), String(to.x), String(to.y)] : [String(from.x), String(from.y)])
-        : []
-      const raw = await execBin(helper, args, 900)
-      if (process.env.GLM_ASK_DEBUG) console.log('[selection] helper attempt', { delay, elapsed: Date.now() - startedAt, bytes: raw?.length || 0 })
-      if (!raw) continue
+    // 原生助手内部已经做了 AX 提交延迟轮询；主进程不再串联 3 次探测。
+    // 微信这类 AX 不暴露选区的 App 之前会先浪费约 1 秒，再进入 Copy 兜底。
+    const startedAt = Date.now()
+    const args = from
+      ? (to ? [String(from.x), String(from.y), String(to.x), String(to.y)] : [String(from.x), String(from.y)])
+      : []
+    const raw = await execBin(helper, args, 900)
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] helper attempt', { elapsed: Date.now() - startedAt, bytes: raw?.length || 0 })
+    if (raw) {
       try {
         const j: any = JSON.parse(raw)
         helperResult = j
@@ -89,7 +85,7 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
             simulated: false
           }
         }
-      } catch { /* 继续重试 */ }
+      } catch {}
     }
   }
   const hit: any = helperResult?.hit

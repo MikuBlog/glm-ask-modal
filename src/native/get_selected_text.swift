@@ -477,7 +477,9 @@ if let front = frontmost {
         if shouldEnhance && !enhancedEnabled {
             out["accessibility"] = ["manual": manualEnabled, "enhanced": false]
         } else {
-            usleep(useconds_t(shouldEnhance ? 120_000 : 100_000))
+            // Non-Chromium apps either expose AX quickly or, like WeChat, never
+            // expose it. Do not spend another 100ms before the copy fallback.
+            usleep(useconds_t(shouldEnhance ? 120_000 : 20_000))
             text = querySelectedText(app: front.app, hit: hitElement)
             out["accessibility"] = ["manual": manualEnabled, "enhanced": shouldEnhance]
         }
