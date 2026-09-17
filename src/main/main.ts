@@ -95,6 +95,15 @@ function zoneAt(pt) {
   } catch {}
   return null
 }
+
+function ownWindowFocused() {
+  try {
+    const win = BrowserWindow.getFocusedWindow()
+    return !!win && win.isVisible()
+  } catch {
+    return false
+  }
+}
 function inBounds(pt, b) {
   return pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height
 }
@@ -475,7 +484,9 @@ function startSelectionFlow() {
       } catch {}
     },
     onGesture: async (pt, kind, from, dragPasteboardSeen) => {
-      if (zoneAt(pt)) return // 点击/划选发生在自己窗口内
+      if (kind !== 'keyboard' && zoneAt(pt)) return // 点击/划选发生在自己窗口内
+      if (kind === 'keyboard' && ownWindowFocused()) return // 输入框内的键盘选词走弹窗内交互
+      if (process.env.GLM_ASK_DEBUG && kind === 'keyboard') debugLog('keyboard selection gesture', { x: pt.x, y: pt.y })
       if (screenshotArmed) {
         // 截图抑制中：不发 Cmd+C。框选拖选结束 = 危险的框选阶段已过，解除抑制
         if (Date.now() - screenshotArmedAt > SCREENSHOT_SUPPRESS_MS) screenshotArmed = false
@@ -488,8 +499,7 @@ function startSelectionFlow() {
       // 先捕获、确认拿到文本后再展示工具条（约 300ms）——
       // 截图框选、拖图标、拖窗口等不产生文本复制的操作绝不误弹
       const meta = await captureSelection(from || pt, pt, {
-        dragPasteboardSeen,
-        strictTextOnly: cfg.selectionStrictTextOnly !== false
+        dragPasteboardSeen
       })
       if (token !== captureToken) return
       const text = (meta.text || '').trim()

@@ -1,9 +1,10 @@
 # 端到端拖选回归测试（需 pyobjc-framework-Quartz + 辅助功能权限）：
 #   1) 在 Electron 目标文本窗口合成真实鼠标拖选 → 断言 GLM问问 工具条(540x80)出现
-#   2) 合成双击选词 → 断言工具条出现（双击触发）
-#   3) 点击他处 → 工具条收起
-#   4) ⌘⇧Space 快捷键开合复验
-#   5) （可选）截图模式抑制：⌘⌥A 后拖选不弹条，窗口期后恢复
+#   2) 合成 Cmd+A 键盘全选 → 断言工具条出现
+#   3) 合成双击选词 → 断言工具条出现（双击触发）
+#   4) 点击他处 → 工具条收起
+#   5) ⌘⇧Space 快捷键开合复验
+#   6) （可选）截图模式抑制：⌘⌥A 后拖选不弹条，窗口期后恢复
 # 用法: python3 scripts/drag-e2e.py [shot_ms]
 # 注意：运行前先退出其他 GLM问问 实例（脚本按进程名定位，要求唯一）。
 import Quartz, subprocess, sys, time, json, os
@@ -120,7 +121,7 @@ subprocess.run(['osascript', '-e', '''
 tell application "System Events"
   set frontmost of first process whose unix id is ''' + str(target.pid) + ''' to true
 end tell'''], capture_output=True, text=True, timeout=3)
-time.sleep(0.3)
+time.sleep(0.6)
 bx, by, bw, bh = tx, ty, 720, 300
 # macOS 会避免窗口贴边/遮挡，实际 frame 可能与传入参数不同；必须按真实 frame 拖选。
 actual = next((w for w in onscreen_windows('Electron') if w[2] == 720 and w[3] == 300), None)
@@ -142,11 +143,17 @@ if not results['hotkey_hides_ask']:
 
 # 测试 1：激活点击 + 拖选 → 工具条应出现
 click(bx + 40, ly1)
-time.sleep(0.5)
+time.sleep(0.8)
 drag(lx1, ly1, lx2, ly1)
 results['drag_shows_toolbar'] = wait_toolbar()
 
-# 测试 2：双击选词 → 工具条应出现；点击他处应收起
+# 测试 2：键盘 Cmd+A 全选也要触发工具条（覆盖键盘选词链路）
+click(lx1, ly1)
+time.sleep(0.3)
+key(0, CMD)
+results['keyboard_selection_shows_toolbar'] = wait_toolbar()
+
+# 测试 3：双击选词 → 工具条应出现；点击他处应收起
 # 注：Chromium 页面对「合成」双击可能不产生选词（真实双击正常），
 # 因此先用 ⌘C 探测选区是否存在：无选区则跳过断言（记 skip）
 click(bx + bw - 60, by + 40)

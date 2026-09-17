@@ -3,66 +3,14 @@
 // 2) 优先调用原生划词助手（AX API / Text Marker 读选中文本，不污染剪贴板）
 // 3) AX 读不到时，优先执行前台应用自己的「编辑 ▸ 拷贝」菜单动作，
 //    并在原生助手里备份/恢复完整剪贴板 flavors（对齐 SelectedTextKit/Easydict）
-// 4) 仅在菜单动作不可用且有文本控件证据时，才兜底模拟 Cmd+C
+// 4) 最后把 Cmd+C 事件直接投递给目标进程，不进入全局事件流
 const { execFile } = require('child_process')
 const path = require('path')
 const fs = require('fs')
-const { clipboard, systemPreferences } = require('electron')
+const { screen, systemPreferences } = require('electron')
 const { uIOhook, UiohookKey } = require('uiohook-napi')
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-
-// JXA A：记录 changeCount → 注入 Cmd+C → 轮询 changeCount → 直读文本。
-// changeCount 是「复制真的发生了」的权威判据：截图框选、拖图标、拖窗口
-// 都不会改变它（或只存图片无文本），因此绝不误弹；选中文本恰与剪贴板
-// 原内容相同时依然可靠。
-const JXA_CAPTURE = `
-ObjC.import('AppKit');
-function run() {
-  var gp = $.NSPasteboard.generalPasteboard;
-  var out = { changed: false, text: '' };
-  var c0 = Number(gp.changeCount);
-  try {
-    var se = Application('System Events');
-    se.keystroke('c', { using: 'command down' });
-  } catch (e) {}
-  var deadline = Date.now() + 800;
-  while (Date.now() < deadline) {
-    if (Number(gp.changeCount) !== c0) {
-      out.changed = true;
-      try {
-        var s = ObjC.unwrap(gp.stringForType($.NSPasteboardTypeString));
-        if (s) out.text = String(s);
-      } catch (e) {}
-      break;
-    }
-    $.NSThread.sleepForTimeInterval(0.02);
-  }
-  return JSON.stringify(out);
-}`
-
-// JXA B：并行取前台应用信息（供黑名单/禁用标签使用）
-const JXA_FRONTMOST = `
-function run() {
-  var out = { bundleId: '', appName: '' };
-  try {
-    var se = Application('System Events');
-    var procs = se.applicationProcesses.whose({ frontmost: true });
-    if (procs.length) {
-      try { out.bundleId = procs[0].bundleIdentifier() || ''; } catch (e) {}
-      try { out.appName = procs[0].name() || ''; } catch (e) {}
-    }
-  } catch (e) {}
-  return JSON.stringify(out);
-}`
-
-function runOsa(script: string, timeout = 1500): Promise<string | null> {
-  return new Promise(resolve => {
-    execFile('osascript', ['-l', 'JavaScript', '-e', script], { timeout }, (err, stdout) => {
-      resolve(err ? null : stdout)
-    })
-  })
-}
 
 function execBin(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise(resolve => {
@@ -87,16 +35,6 @@ function helperPath() {
   return helperPathCache
 }
 
-// 恢复被 Cmd+C 覆盖的剪贴板（仅当期间未被用户改写时）
-function scheduleClipboardRestore(prev, captured) {
-  if (!prev || prev === captured) return
-  setTimeout(() => {
-    try {
-      if (clipboard.readText() === captured) clipboard.writeText(prev)
-    } catch {}
-  }, 600)
-}
-
 type GesturePoint = { x: number; y: number }
 
 async function probeDragPasteboards(timeout = 250): Promise<Record<string, number> | null> {
@@ -118,13 +56,7 @@ function dragPasteboardAdvanced(baseline: Record<string, number> | null, current
   return Object.keys(current).some(name => current[name] > Number(baseline[name] || 0))
 }
 
-async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?: { dragPasteboardSeen?: boolean; strictTextOnly?: boolean }) {
-  // drag-and-drop 会在 drag pasteboard 上写入类型；文本划选不会。
-  // 这是最可靠的对象拖拽信号，必须在任何 Cmd+C 兜底前短路。
-  if (options?.dragPasteboardSeen) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] drag session seen，跳过捕获')
-    return { text: '', appName: '', bundleId: '', axError: 0, simulated: false }
-  }
+async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?: { dragPasteboardSeen?: boolean }) {
   // 路径 A：原生助手（AX/Text Marker 直读，不碰剪贴板）
   let helperError = -2
   let helperBundleId = ''
@@ -163,19 +95,7 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
   const hit: any = helperResult?.hit
   const hitEnd: any = helperResult?.hitEnd
   const focused: any = helperResult?.focused
-  const dragPasteboards: any = helperResult?.dragPasteboards
-  // Cmd+C 兜底必须使用“精确文本控件”证据。AXWebArea/AXGroup/ancestor
-  // 只说明应用支持 AX，不代表鼠标拖的是文本；网页里的按钮、卡片也是这些角色。
-  const preciseTextRoles = new Set([
-    'AXTextArea', 'AXTextField', 'AXSearchField', 'AXComboBox'
-  ])
-  const elementCanContainText = (el: any) => !!el && (
-    preciseTextRoles.has(String(el.role || '')) ||
-    Number(el?.selectedTextRange?.length || 0) > 0
-  )
   const selectedRangeExists = [hit, hitEnd, focused].some(el => Number(el?.selectedTextRange?.length || 0) > 0)
-  const bothEndpointsInText = elementCanContainText(hit) && elementCanContainText(hitEnd ?? hit)
-  const safeTextFallback = selectedRangeExists || bothEndpointsInText
   const nonTextHitRoles = new Set([
     'AXButton', 'AXImage', 'AXSlider', 'AXCheckBox', 'AXRadioButton',
     'AXPopUpButton', 'AXMenuButton', 'AXTabGroup', 'AXToolbar',
@@ -183,15 +103,18 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
     'AXWindow', 'AXSheet'
   ])
   const isKnownNonText = !!hit && nonTextHitRoles.has(hit.role)
-  if (from && hit && isKnownNonText && !safeTextFallback) {
+
+  // AX 直读已经拿到文字时，即使某个自绘应用误写了 drag pasteboard，
+  // 也必须展示工具条；drag 信号只用于阻止后续复制类动作。
+  // drag-and-drop 会在 drag pasteboard 上写入类型；文本划选不会。
+  if (options?.dragPasteboardSeen) {
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] drag session seen，跳过复制动作')
+    return { text: '', appName: helperResult?.appName || '', bundleId: helperBundleId, axError: helperError, simulated: false }
+  }
+
+  if (from && hit && isKnownNonText && !selectedRangeExists) {
     if (process.env.GLM_ASK_DEBUG) console.log('[selection] 非文本拖拽，跳过复制动作', hit)
-    return {
-      text: '',
-      appName: helperResult?.appName || '',
-      bundleId: helperBundleId,
-      axError: helperError,
-      simulated: false
-    }
+    return { text: '', appName: helperResult?.appName || '', bundleId: helperBundleId, axError: helperError, simulated: false }
   }
 
   // Finder 双击文件夹/空白处没有文本选区；此时注入 Cmd+C 只会触发系统提示音。
@@ -252,59 +175,49 @@ async function captureSelection(from?: GesturePoint, to?: GesturePoint, options?
     }
   }
 
-  // 严格文字模式只约束最后的全局 Cmd+C 注入；菜单动作属于目标应用自身
-  // 行为，且由非文本拖拽/Finder/禁用菜单三重门槛保护。
-  if (options?.strictTextOnly && !safeTextFallback) {
-    if (process.env.GLM_ASK_DEBUG) console.log('[selection] strict text-only，无文本证据跳过 Cmd+C', { helperError, hit, hitEnd, focused, dragPasteboards, menuDiagnostics })
-    return {
-      text: '',
-      appName: helperResult?.appName || '',
-      bundleId: helperBundleId,
-      axError: helperError,
-      simulated: false,
-      strategy: 'menu-action'
+  // 路径 C：把 Cmd+C 直接投递给目标进程。与 osascript 全局 keystroke 不同，
+  // 它不会激活 Finder，也不会进入截图/其他全局工具的事件流。
+  if (helper) {
+    const args = from
+      ? (to ? [String(from.x), String(from.y), String(to.x), String(to.y)] : [String(from.x), String(from.y)])
+      : []
+    const startedAt = Date.now()
+    const raw = await execBin(helper, [...args, '--shortcut-copy'], 1800)
+    if (process.env.GLM_ASK_DEBUG) console.log('[selection] shortcut-copy attempt', { elapsed: Date.now() - startedAt, bytes: raw?.length || 0 })
+    if (raw) {
+      try {
+        const j: any = JSON.parse(raw)
+        const shortcutText = String(j.text || '')
+        if (process.env.GLM_ASK_DEBUG) console.log('[selection] shortcut-copy result', { length: shortcutText.length, menu: j.menu })
+        if (shortcutText.trim()) {
+          return {
+            text: shortcutText,
+            appName: j.appName || helperResult?.appName || '',
+            bundleId: j.bundleId || helperBundleId,
+            axError: 0,
+            simulated: true,
+            strategy: 'shortcut'
+          }
+        }
+      } catch {}
     }
   }
 
-  if (process.env.GLM_ASK_DEBUG) console.log('[selection] 菜单动作未取到文本，进入文本证据 Cmd+C 兜底', { helperError, hit, hitEnd, focused, menuDiagnostics })
-
-  // 路径 C：两个 osascript 并行 —— 捕获（Cmd+C + changeCount + 取文本）
-  // 与前台应用信息，工具条在确认文本后立即展示（约 300ms）
-  const prev = clipboard.readText()
-  const [capRaw, metaRaw] = await Promise.all([
-    runOsa(JXA_CAPTURE, 1600),
-    runOsa(JXA_FRONTMOST, 1200)
-  ])
-  let cap: any = { changed: false, text: '' }
-  let meta: any = { bundleId: '', appName: '' }
-  if (capRaw) { try { cap = JSON.parse(capRaw) as any } catch {} }
-  if (metaRaw) { try { meta = JSON.parse(metaRaw) as any } catch {} }
-  const text = (cap.changed && cap.text && cap.text.trim()) ? cap.text : ''
-  // 某些应用会先写一条无 string 类型的 pasteboard 变更；NSPasteboard/JXA
-  // 读不到时，Electron clipboard 可能仍能读到纯文本。
-  let textCandidate = text
-  if (cap.changed && !textCandidate.trim()) {
-    try { textCandidate = clipboard.readText() || '' } catch {}
-  }
-  const finalText = textCandidate.trim()
-  if (text) scheduleClipboardRestore(prev, text)
-  if (finalText) scheduleClipboardRestore(prev, finalText)
-  if (process.env.GLM_ASK_DEBUG) console.log('[selection] Cmd+C capture', { changed: cap.changed, length: finalText.length, appName: meta.appName, bundleId: meta.bundleId })
   return {
-    text: finalText,
-    appName: meta.appName || '',
-    bundleId: meta.bundleId || '',
-    axError: finalText ? 0 : helperError,
-    simulated: true,
-    strategy: 'shortcut'
+    text: '',
+    appName: helperResult?.appName || '',
+    bundleId: helperBundleId,
+    axError: helperError,
+    simulated: false,
+    strategy: menuDiagnostics ? 'menu-action' : 'none'
   }
 }
 
 // ---------- 全局鼠标手势 ----------
-// 拖选（位移 ≥ DRAG_MIN 且时长 ≥ 50ms）与双击/三击选词都会触发捕获；
+// 拖选（位移 ≥ 3px 且时长 ≥ 20ms）与双击/三击/键盘选词都会触发捕获；
 // 是否弹工具条由捕获结果决定（未复制出文本就不弹）——截图框选、拖图标、
 // 拖窗口等操作不会误弹。
-const DRAG_MIN = 12
+const DRAG_MIN = 3
   let downPoint = null
   let dragPasteboardSeen = false
   let dragPasteboardBaseline: Record<string, number> | null = null
@@ -314,6 +227,7 @@ const DRAG_MIN = 12
   let lastClick = null // { t, x, y, count }
 let hookRunning = false
 let retryTimer = null
+let lastMousePoint: GesturePoint | null = null
 
 function hasAccessibilityPermission() {
   if (process.platform !== 'darwin') return true
@@ -362,7 +276,32 @@ function stopHookRetry() {
 function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, onScreenshotCancel, onSwitchSpace }: any) {
   let lastHotkeyDown = 0
   let lastShotDown = 0
+  let selectionTriggerTimer: any = null
+  const selectionNavigationKeys = new Set([
+    UiohookKey.ArrowLeft, UiohookKey.ArrowRight, UiohookKey.ArrowUp, UiohookKey.ArrowDown,
+    UiohookKey.Home, UiohookKey.End, UiohookKey.PageUp, UiohookKey.PageDown
+  ])
+
+  const selectionKeyDelay = (e: any) => {
+    if (e.keycode === UiohookKey.C && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) return 180
+    if (e.keycode === UiohookKey.A && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) return 180
+    if (e.shiftKey && selectionNavigationKeys.has(e.keycode)) return 180
+    return 0
+  }
+
+  const scheduleSelectionProbe = (delay: number) => {
+    if (selectionTriggerTimer) clearTimeout(selectionTriggerTimer)
+    selectionTriggerTimer = setTimeout(() => {
+      selectionTriggerTimer = null
+      const pt = lastMousePoint || screen.getCursorScreenPoint()
+      onGesture({ x: pt.x, y: pt.y }, 'keyboard')
+    }, delay)
+  }
+
   try {
+    uIOhook.on('mousemove', e => {
+      lastMousePoint = { x: e.x, y: e.y }
+    })
     uIOhook.on('mousedown', e => {
       if (e.button !== 1) return
       if (process.env.GLM_ASK_DEBUG) console.log('[selection] mousedown', { x: e.x, y: e.y })
@@ -403,7 +342,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       const dist = Math.hypot(e.x - from.x, e.y - from.y)
       const dur = Date.now() - from.t
       if (process.env.GLM_ASK_DEBUG) console.log('[selection] mouseup', { x: e.x, y: e.y, dist, dur, dragPasteboardSeen })
-      if (dist >= DRAG_MIN && dur >= 50) {
+      if (dist >= DRAG_MIN && dur >= 20) {
         onGesture({ x: e.x, y: e.y }, 'drag', from, dragPasteboardSeen)
         return
       }
@@ -429,7 +368,14 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       const isSpaceCombo = e.keycode === UiohookKey.Space && e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey
       const isShotCombo = e.keycode === UiohookKey.A && !e.ctrlKey &&
         ((e.metaKey && e.altKey) || (e.metaKey && e.shiftKey) || (e.altKey && !e.metaKey && !e.shiftKey))
+      const selectionDelay = selectionKeyDelay(e)
+      if (selectionDelay) {
+        // uiohook 在部分前台应用里收不到 keyup；在 keydown（含按住重复）上
+        // 做防抖，松手/组合键完成后自然触发一次探测。
+        scheduleSelectionProbe(selectionDelay)
+      }
       if (isShotCombo) {
+        if (selectionTriggerTimer) clearTimeout(selectionTriggerTimer)
         if (now - lastShotDown > 1000) {
           lastShotDown = now
           onScreenshotTrigger && onScreenshotTrigger()
@@ -437,6 +383,7 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
         return
       }
       if ((e.keycode === UiohookKey.Escape || e.keycode === UiohookKey.Enter) && !e.metaKey && !e.altKey && !e.ctrlKey) {
+        if (selectionTriggerTimer) clearTimeout(selectionTriggerTimer)
         onScreenshotCancel && onScreenshotCancel()
       }
       // Ctrl+方向键 = 切换桌面（Mission Control 默认键）：主动隐藏弹窗，

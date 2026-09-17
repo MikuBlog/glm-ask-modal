@@ -295,6 +295,77 @@ func restorePasteboard(_ items: [[String: Data]]) -> Bool {
     return pasteboard.writeObjects(restored)
 }
 
+func restorePasteboardBackup(_ items: [[String: Data]]) -> Bool {
+    guard !items.isEmpty else { return NSPasteboard.general.clearContents() >= 0 }
+    return restorePasteboard(items)
+}
+
+func postCommandCToProcess(_ pid: pid_t) {
+    let source = CGEventSource(stateID: .combinedSessionState)
+    for keyDown in [true, false] {
+        guard let event = CGEvent(
+            keyboardEventSource: source,
+            virtualKey: 8,
+            keyDown: keyDown
+        ) else { continue }
+        event.flags = [.maskCommand]
+        event.postToPid(pid)
+        usleep(20_000)
+    }
+}
+
+func copySelectedText(
+    action: () throws -> Void,
+    timeout: TimeInterval,
+    info: [String: Any]
+) -> (text: String?, info: [String: Any]) {
+    var info = info
+    let pasteboard = NSPasteboard.general
+    let backup = backupPasteboard()
+
+    // Clearing after the backup forces apps to write even when the selection is
+    // identical to the user's current clipboard; otherwise changeCount cannot
+    // distinguish a real copy from an unchanged pasteboard.
+    pasteboard.clearContents()
+    let initialChangeCount = pasteboard.changeCount
+    do {
+        try action()
+    } catch {
+        info["actionError"] = "\(error)"
+        _ = restorePasteboardBackup(backup)
+        info["restored"] = true
+        return (nil, info)
+    }
+
+    var captured: String?
+    var acceptedChangeCount = initialChangeCount
+    var capturedAt: Date?
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if pasteboard.changeCount != initialChangeCount {
+            if captured == nil {
+                acceptedChangeCount = pasteboard.changeCount
+                if let text = normalizedSelectedText(pasteboard.string(forType: .string)) {
+                    captured = text
+                    capturedAt = Date()
+                }
+            }
+        }
+        if let capturedAt, Date().timeIntervalSince(capturedAt) >= 0.05 { break }
+        usleep(20_000)
+    }
+
+    let changed = pasteboard.changeCount != initialChangeCount
+    let thirdPartyChanged = pasteboard.changeCount != acceptedChangeCount
+    info["changed"] = changed
+    info["restored"] = false
+    if !thirdPartyChanged {
+        info["restoreAttempted"] = true
+        info["restored"] = restorePasteboardBackup(backup)
+    }
+    return (captured, info)
+}
+
 func copySelectedTextWithMenuAction(_ app: AXUIElement) -> (text: String?, info: [String: Any]) {
     guard let item = findCopyMenuItem(inApp: app) else {
         return (nil, ["found": false, "state": "missing"])
@@ -315,42 +386,28 @@ func copySelectedTextWithMenuAction(_ app: AXUIElement) -> (text: String?, info:
         info["enabled"] = true
     }
 
-    let pasteboard = NSPasteboard.general
-    let backup = backupPasteboard()
-    let initialChangeCount = pasteboard.changeCount
-    let pressError = AXUIElementPerformAction(item, "AXPress" as CFString)
-    info["pressError"] = Int(pressError.rawValue)
-    guard pressError == .success else { return (nil, info) }
+    var pressError = AXError.cannotComplete
+    var result = copySelectedText(
+        action: { pressError = AXUIElementPerformAction(item, "AXPress" as CFString) },
+        timeout: bundleId == "com.apple.Safari" ? 0.5 : 0.35,
+        info: info
+    )
+    result.info["pressError"] = Int(pressError.rawValue)
+    guard pressError == .success else { return (nil, result.info) }
+    return result
+}
 
-    var captured: String?
-    var acceptedChangeCount = initialChangeCount
-    var capturedAt: Date?
-    let deadline = Date().addingTimeInterval(bundleId == "com.apple.Safari" ? 0.5 : 0.3)
-    while Date() < deadline {
-        if pasteboard.changeCount != initialChangeCount {
-            if captured == nil,
-               let text = normalizedSelectedText(pasteboard.string(forType: .string)) {
-                captured = text
-                acceptedChangeCount = pasteboard.changeCount
-                capturedAt = Date()
-            }
-        }
-        if let capturedAt, Date().timeIntervalSince(capturedAt) >= 0.05 { break }
-        usleep(20_000)
-    }
-
-    let changed = pasteboard.changeCount != initialChangeCount
-    let effectivelyEmpty = (pasteboard.types ?? []).isEmpty ||
-        ((pasteboard.types ?? []).count == 1 && (pasteboard.string(forType: .string) ?? "").isEmpty)
-    let thirdPartyChanged = pasteboard.changeCount != acceptedChangeCount
-    let shouldRestore = !backup.isEmpty && changed && (!thirdPartyChanged || effectivelyEmpty)
-    info["changed"] = changed
-    info["restored"] = false
-    if shouldRestore {
-        info["restoreAttempted"] = true
-        info["restored"] = restorePasteboard(backup)
-    }
-    return (captured, info)
+func copySelectedTextWithShortcut(_ running: NSRunningApplication) -> (text: String?, info: [String: Any]) {
+    copySelectedText(
+        action: { postCommandCToProcess(running.processIdentifier) },
+        timeout: bundleId == "com.apple.Safari" ? 0.5 : 0.35,
+        info: [
+            "found": true,
+            "enabled": true,
+            "title": "Cmd+C",
+            "postedToPid": Int(running.processIdentifier)
+        ]
+    )
 }
 
 var out: [String: Any] = ["bundleId": "", "appName": "", "text": "", "err": -1]
@@ -374,6 +431,8 @@ let frontmost = frontmostAXApp()
 let bundleId = frontmost?.running.bundleIdentifier ?? ""
 let args = CommandLine.arguments
 let forceMenuCopy = args.dropFirst().contains("--force-menu-copy")
+let shortcutCopy = args.dropFirst().contains("--shortcut-copy")
+let forcedCopy = forceMenuCopy || shortcutCopy
 
 func querySelectedText(app: AXUIElement, hit: AXUIElement?) -> String? {
     if let text = selectedTextOnElement(app) { return text }
@@ -403,14 +462,14 @@ if let front = frontmost {
         AXUIElementSetMessagingTimeout(hit, 0.2)
     }
 
-    var text = forceMenuCopy ? nil : querySelectedText(app: front.app, hit: hitElement)
-    if text == nil && !forceMenuCopy {
+    var text = forcedCopy ? nil : querySelectedText(app: front.app, hit: hitElement)
+    if text == nil && !forcedCopy {
         // Selection state can be committed slightly after mouse-up in
         // Chromium/Electron. Poll once before deciding the hit was non-text.
         usleep(50_000)
         text = querySelectedText(app: front.app, hit: hitElement)
     }
-    if text == nil && !forceMenuCopy {
+    if text == nil && !forcedCopy {
         // AXManualAccessibility is normally sufficient for Electron. Chromium
         // browsers sometimes need the legacy enhanced-UI switch as a retry.
         let shouldEnhance = isLikelyChromiumBrowser(bundleId)
@@ -436,15 +495,17 @@ if let front = frontmost {
     // drags and known non-text targets. It mirrors SelectedTextKit's preferred
     // fallback: press the target app's own Edit > Copy item instead of sending
     // a global Cmd+C event.
-    if text == nil && forceMenuCopy {
-        let menuResult = copySelectedTextWithMenuAction(front.app)
-        out["menu"] = menuResult.info
-        if let text = menuResult.text {
+    if text == nil && forcedCopy {
+        let copyResult = forceMenuCopy
+            ? copySelectedTextWithMenuAction(front.app)
+            : copySelectedTextWithShortcut(front.running)
+        out["menu"] = copyResult.info
+        if let text = copyResult.text {
             out["text"] = text
             out["err"] = 0
-            out["strategy"] = "menu-action"
+            out["strategy"] = forceMenuCopy ? "menu-action" : "shortcut"
         }
-        if let restored = menuResult.info["restored"] as? Bool {
+        if let restored = copyResult.info["restored"] as? Bool {
             out["pasteboardRestored"] = restored
         }
     }
