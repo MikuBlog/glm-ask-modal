@@ -436,7 +436,6 @@ button { font-family: inherit; }
   padding: 7px;
   max-height: min(520px, 58vh);
   overflow: auto;
-  overscroll-behavior: contain;
 }
 .tool-item {
   display: block;

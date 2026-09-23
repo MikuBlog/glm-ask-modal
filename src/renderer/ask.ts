@@ -53,6 +53,8 @@ let pending = session.draft // 当前话题的待发送引用与附件
 let toastTimer = null
 let intentPending = false
 let intentJob = 0
+let lastFocusSessionRequest = ''
+const sessionScrollTops = new Map()
 
 function newSession() {
   return {
@@ -352,6 +354,33 @@ function enhanceCode(container, autoRender = false) {
 }
 
 /* ---------------- 滚动 ---------------- */
+function isWheelScrollable(el) {
+  if (!el) return false
+  if (el === els.scroll) return true
+  const style = window.getComputedStyle(el)
+  return /(auto|scroll|overlay)/i.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1
+}
+
+function chainWheelScroll(target, deltaY) {
+  let el = target
+  while (el) {
+    if (isWheelScrollable(el)) {
+      const before = el.scrollTop
+      const next = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, before + Math.round(deltaY)))
+      el.scrollTop = next
+      if (Math.abs(next - before) >= 1) return true
+    }
+    if (el === els.scroll) break
+    el = el.parentElement
+  }
+  return false
+}
+
+function wheelDeltaY(e) {
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? els.scroll.clientHeight || 120 : 1
+  return e.deltaY * unit
+}
+
 function nearBottom() {
   // 只有真正贴底才自动跟随；用户稍微往上翻看历史时保持当前位置。
   return els.scroll.scrollHeight - els.scroll.scrollTop - els.scroll.clientHeight <= 4
@@ -540,16 +569,21 @@ function latestReasoningSentence(reasoning: any) {
   return parts.at(-1) || '正在思考…'
 }
 
+function toolTraceStatus(m) {
+  // 外层状态代表整次回复，不用单个工具失败覆盖最终成功结果。
+  if (m.error) return { state: 'error', title: '执行失败' }
+  if (!m.done) return { state: 'running', title: '执行中' }
+  if (m.aborted) return { state: 'done', title: '已停止' }
+  return { state: 'done', title: '执行完成' }
+}
+
 function buildToolTrace(m) {
   if (!m.tools?.length) return null
   const groupKey = `group:${m.id}`
-  const anyRunning = !m.done && m.tools.some(t => t.state === 'running' || t.state === undefined)
-  const anyError = m.tools.some(t => t.state === 'error')
-  const groupState = anyRunning ? 'running' : anyError ? 'error' : 'done'
-  const groupTitle = anyRunning ? '执行中' : anyError ? '执行失败' : '执行完成'
+  const group = toolTraceStatus(m)
 
   const root = document.createElement('details')
-  root.className = `tool-trace ${groupState}`
+  root.className = `tool-trace ${group.state}`
   const groupStartedAt = m.tools
     .map(t => t.startedAt)
     .filter(Boolean)
@@ -563,7 +597,7 @@ function buildToolTrace(m) {
   groupDot.className = 'tool-dot'
   const groupTitleEl = document.createElement('span')
   groupTitleEl.className = 'tool-title'
-  groupTitleEl.textContent = groupTitle
+  groupTitleEl.textContent = group.title
   const groupCount = document.createElement('span')
   groupCount.className = 'tool-count'
   groupCount.textContent = `${m.tools.length} 项`
@@ -621,10 +655,14 @@ function buildToolTrace(m) {
   return root
 }
 
-function renderAll() {
+function rememberScrollTop() {
+  sessionScrollTops.set(session.id, els.scroll.scrollTop)
+}
+
+function renderAll(scrollTop?) {
   els.thread.innerHTML = ''
   session.messages.forEach((m, i) => els.thread.appendChild(renderMsg(m, i)))
-  els.scroll.scrollTop = els.scroll.scrollHeight
+  els.scroll.scrollTop = scrollTop ?? els.scroll.scrollHeight
 }
 
 function refreshMsgEl(m) {
@@ -680,10 +718,11 @@ async function focusSessionById(id) {
     }
   }
   if (!target) return
+  rememberScrollTop()
   session = target
   editingId = null
   writeDraft(target.draft)
-  renderAll()
+  renderAll(sessionScrollTops.get(target.id))
   updateSendBtn()
   refreshConfig()
 }
@@ -750,11 +789,76 @@ function updateSendBtn() {
   els.btnSend.classList.toggle('disabled', !stopMode && !hasText)
 }
 
+function buildToolPrompt(m) {
+  return [
+    m.text,
+    m.quote,
+    imagePrompt(m.images),
+    ...(m.files || []).map(f => `${f.name}\n${f.text || ''}`)
+  ].join('\n').slice(0, 12000)
+}
+
+async function routeAndRespond(user, replyStartedAt = Date.now(), owner = session) {
+  const intentMsg: any = {
+    id: uid(),
+    role: 'assistant',
+    text: '',
+    reasoning: '正在分析请求意图…',
+    done: false,
+    tools: [],
+    replyStartedAt
+  }
+  owner.messages.push(intentMsg)
+  if (session === owner) renderAll()
+  void saveSession(owner)
+
+  const jobId = ++intentJob
+  intentPending = true
+  updateSendBtn()
+  let route: any = { delegated: false, reason: '' }
+  try {
+    route = await routeRequest(buildToolPrompt(user), {
+      hasImage: !!(user.images || []).length,
+      hasBinaryFile: (user.files || []).some(f => f.binary)
+    }, tool => upsertToolTrace(intentMsg, tool))
+  } catch (err) {
+    route = { delegated: false, reason: err?.message || '意图识别失败' }
+  } finally {
+    if (intentJob === jobId) {
+      intentPending = false
+      updateSendBtn()
+    }
+  }
+
+  if (intentJob !== jobId || !owner.messages.includes(intentMsg)) {
+    intentMsg.done = true
+    intentMsg.aborted = true
+    intentMsg.reasoningDone = true
+    if (owner.messages.includes(intentMsg)) {
+      owner.messages.splice(owner.messages.indexOf(intentMsg), 1)
+      if (session === owner) renderAll()
+    }
+    void saveSession(owner)
+    return
+  }
+
+  intentMsg.done = true
+  intentMsg.reasoning = `意图识别：${route.reason || '已完成'}`
+  if (session === owner) refreshMsgEl(intentMsg)
+
+  if (!config.hasKey && !route.delegated) {
+    els.banner.classList.remove('hidden')
+    toast('请先配置 API Key')
+    window.askAPI.openSettings()
+    return
+  }
+  intentMsg.routeAgent = route.agent || null
+  respond(route.delegated, intentMsg, route.agent)
+}
+
 async function send() {
   const replyStartedAt = Date.now()
   if (intentPending) return
-  const owner = session
-  const jobId = ++intentJob
   const text = els.input.value.trim()
   const quote = pending.quote
   const images = normalizeImages(pending.images)
@@ -781,66 +885,7 @@ async function send() {
   els.thread.appendChild(el)
   els.scroll.scrollTop = els.scroll.scrollHeight
 
-  const toolPrompt = [text, quote, imagePrompt(images), ...files.map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
-
-  // 意图识别过程也作为回复链路的一部分展示；后续响应会复用这条 assistant 消息。
-  const intentMsg: any = {
-    id: uid(),
-    role: 'assistant',
-    text: '',
-    reasoning: '正在分析请求意图…',
-    done: false,
-    tools: []
-  }
-  intentMsg.replyStartedAt = replyStartedAt
-  owner.messages.push(intentMsg)
-  renderAll()
-  saveSession()
-
-  intentPending = true
-  updateSendBtn()
-  let route: any = { delegated: false, reason: '' }
-  try {
-    route = await routeRequest(toolPrompt, {
-      hasImage: images.length > 0,
-      hasBinaryFile: files.some(f => f.binary)
-    }, tool => upsertToolTrace(intentMsg, tool))
-  } catch (err) {
-    route = { delegated: false, reason: err?.message || '意图识别失败' }
-  } finally {
-    if (intentJob === jobId) {
-      intentPending = false
-      updateSendBtn()
-    }
-  }
-
-  // 编辑会在意图识别仍在进行时截断会话。旧发送流程已经失效，
-  // 必须在这里丢弃，否则它完成后会再次 respond，造成双流/双占位。
-  if (intentJob !== jobId || !owner.messages.includes(intentMsg)) {
-    intentMsg.done = true
-    intentMsg.aborted = true
-    intentMsg.reasoningDone = true
-    if (owner.messages.includes(intentMsg)) {
-      const pos = owner.messages.indexOf(intentMsg)
-      owner.messages.splice(pos, 1)
-      if (session === owner) renderAll()
-    }
-    void saveSession(owner)
-    return
-  }
-
-  intentMsg.done = true
-  intentMsg.reasoning = `意图识别：${route.reason || '已完成'}`
-  refreshMsgEl(intentMsg)
-
-  if (!config.hasKey && !route.delegated) {
-    els.banner.classList.remove('hidden')
-    toast('请先配置 API Key')
-    window.askAPI.openSettings()
-    return
-  }
-  intentMsg.routeAgent = route.agent || null
-  respond(route.delegated, intentMsg, route.agent)
+  await routeAndRespond(m, replyStartedAt)
 }
 
 function cancelIntentJob() {
@@ -1145,18 +1190,22 @@ async function retryFromError(msgId) {
   if (activeStream()) return
   const idx = session.messages.findIndex(m => m.id === msgId)
   if (idx < 0) return
+  const user = [...session.messages.slice(0, idx)].reverse().find(m => m.role === 'user')
+  if (!user) return
   session.messages.splice(idx, 1) // 移除出错消息
   renderAll()
-  respond(false)
+  await routeAndRespond(user)
 }
 
 async function regenerate() {
   if (activeStream()) return
   const last = session.messages[session.messages.length - 1]
   if (!last || last.role !== 'assistant') return
+  const user = [...session.messages].reverse().find(m => m.role === 'user')
+  if (!user) return
   session.messages.pop()
   renderAll()
-  respond(false)
+  await routeAndRespond(user)
 }
 
 async function stopStream() {
@@ -1374,61 +1423,13 @@ async function saveEdit(m, data) {
   cancelIntentJob()
   if (activeStream()) supersedeActiveStream()
 
-  const jobId = ++intentJob
-  intentPending = true
-  updateSendBtn()
   m.text = (data.text || '').trim()
   m.quote = (data.quote || '').trim()
   m.images = normalizeImages(data.images)
   m.files = data.files
   // 截断该消息之后的所有内容，重新生成
   session.messages = session.messages.slice(0, idx + 1)
-  const prompt = [m.text, m.quote, imagePrompt(m.images), ...(m.files || []).map(f => `${f.name}\n${f.text || ''}`)].join('\n').slice(0, 12000)
-
-  // 编辑路径和普通发送一样，必须先把意图识别消息挂到当前 turn。
-  // 否则 classifyIntent 的几秒等待里没有任何占位 UI，看起来像“无响应”。
-  const intentMsg: any = {
-    id: uid(),
-    role: 'assistant',
-    text: '',
-    reasoning: '正在分析请求意图…',
-    done: false,
-    tools: [],
-    replyStartedAt: Date.now()
-  }
-  session.messages.push(intentMsg)
-  renderAll()
-  void saveSession(session)
-
-  let route: any = { delegated: false, reason: '' }
-  try {
-    route = await routeRequest(prompt, {
-      hasBinaryFile: (m.files || []).some(f => f.binary),
-      hasImage: !!(m.images || []).length
-    }, tool => upsertToolTrace(intentMsg, tool))
-  } catch (err) {
-    route = { delegated: false, reason: err?.message || '意图识别失败' }
-    console.warn('[ask] edit route failed:', err)
-  } finally {
-    if (intentJob === jobId) {
-      intentPending = false
-      updateSendBtn()
-    }
-  }
-  if (intentJob !== jobId) return
-
-  intentMsg.done = true
-  intentMsg.reasoning = `意图识别：${route.reason || '已完成'}`
-  refreshMsgEl(intentMsg)
-
-  if (!config.hasKey && !route.delegated) {
-    els.banner.classList.remove('hidden')
-    toast('请先配置 API Key')
-    window.askAPI.openSettings()
-    return
-  }
-  intentMsg.routeAgent = route.agent || null
-  respond(route.delegated, intentMsg, route.agent)
+  await routeAndRespond(m)
 }
 
 /* ---------------- 引用 / 附件 ---------------- */
@@ -1556,6 +1557,10 @@ els.selbar.addEventListener('click', e => {
 })
 
 els.scroll.addEventListener('scroll', hideSelbar)
+els.scroll.addEventListener('wheel', e => {
+  if (e.ctrlKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
+  if (chainWheelScroll(e.target, wheelDeltaY(e))) e.preventDefault()
+}, { passive: false })
 
 /* ---------------- 图片预览 / 右键复制 ---------------- */
 let contextImageSrc = ''
@@ -1807,27 +1812,11 @@ function renderHistoryItems(items: any[]) {
     del.onclick = async e => {
       e.stopPropagation()
       await window.askAPI.deleteHistory(s.id)
+      sessionScrollTops.delete(s.id)
       openHistory()
     }
     item.onclick = async () => {
-      syncDraft()
-      await saveSession()
-      let target = sessions.get(s.id)
-      if (!target) {
-        const full = await window.askAPI.loadHistory(s.id)
-        if (full) {
-          target = normalizeSession(full)
-          sessions.set(target.id, target)
-        }
-      }
-      if (target) {
-        session = target
-        editingId = null
-        writeDraft(target.draft)
-        renderAll()
-        updateSendBtn()
-        refreshConfig()
-      }
+      await focusSessionById(s.id)
       els.historyPanel.classList.add('hidden')
     }
     item.appendChild(del)
@@ -1895,6 +1884,7 @@ async function newTopic() {
   syncDraft()
   await saveSession()
   const carriedDraft = readDraft()
+  rememberScrollTop()
   session = newSession()
   sessions.set(session.id, session)
   editingId = null
@@ -2050,7 +2040,14 @@ window.askAPI.onLlm(ev => {
   streamHandlers.get(ev.reqId)?.onEvent(ev)
 })
 window.askAPI.onReplyCompleteToast(payload => showReplyCompleteToast(payload))
-window.askAPI.onFocusSession(payload => focusSessionById(payload?.sessionId))
+window.askAPI.onFocusSession(payload => {
+  const requestId = String(payload?.requestId || '')
+  if (requestId) {
+    if (lastFocusSessionRequest === requestId) return
+    lastFocusSessionRequest = requestId
+  }
+  focusSessionById(payload?.sessionId)
+})
 window.askAPI.onCfgChanged(cfg => {
   config = { ...config, ...cfg }
   refreshAgentLabel()
@@ -2119,6 +2116,7 @@ window.askAPI.onInit(async p => {
 })
 
 function newTopicNoSave() {
+  rememberScrollTop()
   session = newSession()
   sessions.set(session.id, session)
   editingId = null

@@ -349,7 +349,11 @@ function showAskOnActiveSpace() {
 }
 
 function focusSessionFromMain(payload: any = {}) {
-  pendingFocusSession = payload || null
+  const request = {
+    ...(payload || {}),
+    requestId: payload?.requestId || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  }
+  pendingFocusSession = request
   try {
     app.focus({ steal: true })
   } catch {}
@@ -357,11 +361,11 @@ function focusSessionFromMain(payload: any = {}) {
 
   const sendFocus = () => {
     if (!askWin || askWin.isDestroyed()) return
-    askWin.webContents.send('focus-session', pendingFocusSession)
+    askWin.webContents.send('focus-session', request)
   }
   ;[0, 80, 220, 500, 1000].forEach(delay => setTimeout(sendFocus, delay))
   setTimeout(() => {
-    if (pendingFocusSession === payload) pendingFocusSession = null
+    if (pendingFocusSession === request) pendingFocusSession = null
   }, 3000)
 }
 

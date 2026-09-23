@@ -118,6 +118,64 @@ module.exports = function runSmoke(deps) {
     out.steps.push('ask alwaysOnTop(置顶): ' + (askWin.isAlwaysOnTop() ? 'OK' : 'FAIL'))
 
     try {
+      const wheel = await askWin.webContents.executeJavaScript(`(() => {
+        const scroll = document.querySelector('#scroll')
+        const detail = document.querySelector('.tool-detail')
+        const list = detail?.closest('.tool-list')
+        if (!scroll || !detail || !list) return null
+        detail.textContent = Array.from({ length: 120 }, (_, i) => 'line ' + (i + 1)).join('\\n')
+        detail.scrollTop = 0
+        list.scrollTop = 0
+        scroll.scrollTop = 300
+        const r = detail.getBoundingClientRect()
+        return {
+          x: Math.round(r.left + r.width / 2),
+          y: Math.round(r.top + Math.min(r.height / 2, 20)),
+          innerBefore: detail.scrollTop,
+          outerBefore: scroll.scrollTop
+        }
+      })()`)
+      if (!wheel) throw new Error('scroll containers missing')
+      askWin.focus()
+      askWin.webContents.sendInputEvent({
+        type: 'mouseWheel',
+        x: wheel.x,
+        y: wheel.y,
+        deltaX: 0,
+        deltaY: 120,
+        wheelSpeed: 1
+      })
+      await sleep(300)
+      const after = await askWin.webContents.executeJavaScript(`(() => {
+        const detail = document.querySelector('.tool-detail')
+        const scroll = document.querySelector('#scroll')
+        return { inner: detail?.scrollTop ?? -1, outer: scroll?.scrollTop ?? -1 }
+      })()`)
+      const chained = after.inner === wheel.innerBefore && after.outer < wheel.outerBefore
+      out.steps.push(`nested-wheel-chaining: ${chained ? 'OK' : `FAIL (${JSON.stringify({ wheel, after })})`}`)
+      if (!chained) out.failed = true
+    } catch (e) {
+      out.failed = true
+      out.steps.push('nested-wheel-chaining: FAIL ' + e.message)
+    }
+
+    try {
+      const request = { sessionId: 'demo', requestId: 'smoke-focus-request' }
+      askWin.webContents.send('focus-session', request)
+      await sleep(120)
+      await askWin.webContents.executeJavaScript(`document.querySelector('#scroll').scrollTop = 120`)
+      askWin.webContents.send('focus-session', request)
+      await sleep(180)
+      const top = await askWin.webContents.executeJavaScript(`document.querySelector('#scroll').scrollTop`)
+      const stable = top === 120
+      out.steps.push(`duplicate-focus-scroll-stability: ${stable ? 'OK' : `FAIL (${top})`}`)
+      if (!stable) out.failed = true
+    } catch (e) {
+      out.failed = true
+      out.steps.push('duplicate-focus-scroll-stability: FAIL ' + e.message)
+    }
+
+    try {
       await sleep(300)
       const rendered = await askWin.webContents.executeJavaScript(`!!document.querySelector('.html-preview')`)
       out.steps.push(`html-render: ${rendered ? 'OK' : 'FAIL (preview missing)'}`)
