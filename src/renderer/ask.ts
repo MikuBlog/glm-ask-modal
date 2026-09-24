@@ -1937,25 +1937,6 @@ els.input.addEventListener('paste', e => {
   }
 })
 
-// 输入框禁止鼠标划词选中；Cmd+A 等键盘全选/光标操作保留。
-let inputMouseSelecting = false
-els.input.addEventListener('mousedown', () => {
-  inputMouseSelecting = true
-})
-els.input.addEventListener('mouseup', e => {
-  const input = e.target as HTMLTextAreaElement
-  if (input.selectionStart !== input.selectionEnd) {
-    input.setSelectionRange(input.value.length, input.value.length)
-  }
-  inputMouseSelecting = false
-})
-els.input.addEventListener('select', e => {
-  const input = e.target as HTMLTextAreaElement
-  if (inputMouseSelecting && input.selectionStart !== input.selectionEnd) {
-    input.setSelectionRange(input.value.length, input.value.length)
-  }
-})
-
 // 编辑态中的任意位置都可 Cmd+V 粘贴图片；文本粘贴仍由 textarea 原生处理。
 document.addEventListener('paste', async e => {
   if (!editingId || !editingData) return

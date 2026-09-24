@@ -325,7 +325,6 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
   let streamedContent = false
   let finished = false
   let lastActivityAt = Date.now()
-  const startedAt = Date.now()
   let watchdog = null
   const emitContent = text => {
     if (!text) return
@@ -573,9 +572,6 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
     const now = Date.now()
     if (now - lastActivityAt > 60_000) {
       finish({ ok: false, error: '本地 Agent 已 60 秒无响应，已自动停止' })
-      abort(child)
-    } else if (now - startedAt > 240_000) {
-      finish({ ok: false, error: '本地 Agent 执行超时（4 分钟），已自动停止' })
       abort(child)
     }
   }, 1000)
