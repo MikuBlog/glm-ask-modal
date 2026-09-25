@@ -269,6 +269,21 @@ function buildAgentPrompt(messages, summary, execute = false) {
   return parts.join('\n\n')
 }
 
+function usageFromAgentEvent(agent, ev) {
+  const usage = agent === 'claude'
+    ? (ev.type === 'result' ? ev.usage : ev.event?.usage)
+    : (agent === 'codex' && ev.type === 'turn.completed' ? ev.usage : null)
+  if (!usage) return null
+  const number = value => Number.isFinite(Number(value)) ? Number(value) : null
+  const promptTokens = number(usage.input_tokens ?? usage.promptTokens)
+  const completionTokens = number(usage.output_tokens ?? usage.completionTokens)
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: number(usage.total_tokens ?? usage.totalTokens) ?? (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null)
+  }
+}
+
 // 启动本地 agent 的 headless 入口。它们自身会加载各自配置里的 skills/plugins/MCP。
 // execute=false 时保持只读/规划权限；execute=true 时才能真实调用 Skill/MCP/CLI。
 function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute = false, onEvent }) {
@@ -325,6 +340,7 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
   let streamedContent = false
   let finished = false
   let lastActivityAt = Date.now()
+  let agentUsage = null
   let watchdog = null
   const emitContent = text => {
     if (!text) return
@@ -447,6 +463,8 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
       if (!line.startsWith('{')) continue
       let ev
       try { ev = JSON.parse(line) } catch { continue }
+      const eventUsage = usageFromAgentEvent(chosen.id, ev)
+      if (eventUsage) agentUsage = eventUsage
       if (chosen.id === 'claude') {
         // 开启 partial 后，正文/思考用 delta 实时流式返回；完整 message 只用于工具状态。
         if (ev.type === 'stream_event' && ev.event?.type === 'content_block_start') {
@@ -595,7 +613,7 @@ function stream({ reqId, messages, agent = 'auto', cwd = home, summary, execute 
     else {
       const finalText = text.trim()
       if (!streamedContent) onEvent({ reqId, type: 'content', text: finalText })
-      onEvent({ reqId, type: 'done', ok: true, agent: chosen.id, final: finalText })
+      onEvent({ reqId, type: 'done', ok: true, agent: chosen.id, final: finalText, usage: agentUsage })
     }
   })
   return { ok: true, delegated: true, agent: chosen.id, child }

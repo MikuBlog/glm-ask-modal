@@ -716,17 +716,18 @@ function registerIpc() {
         { role: 'user', content: JSON.stringify(user) }
       ],
       temperature: 0,
-      maxTokens: 160,
-      timeoutMs: 10000
+      maxTokens: 256,
+      timeoutMs: 30000
     })
-    const match = raw.match(/\{[\s\S]*\}/)
+    const match = raw.text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error('意图识别返回格式无效')
     const parsed = JSON.parse(match[0])
     return {
       ok: true,
       useAgent: parsed.use_agent === true,
       confidence: Number(parsed.confidence) || 0,
-      reason: String(parsed.reason || '').slice(0, 160)
+      reason: String(parsed.reason || '').slice(0, 160),
+      usage: raw.usage
     }
   })
   ipcMain.handle('local-agent:run', (e, req) => {

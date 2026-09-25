@@ -15,6 +15,7 @@ const els = {
   quoteChip: $('#quote-chip'),
   quoteText: $('#quote-text'),
   attachChips: $('#attach-chips'),
+  dockbar: $('#dockbar'),
   btnSend: $('#btn-send'),
   btnModel: $('#btn-model'),
   modelLabel: $('#model-label'),
@@ -22,6 +23,9 @@ const els = {
   btnEffort: $('#btn-effort'),
   effortLabel: $('#effort-label'),
   effortMenu: $('#effort-menu'),
+  btnUsage: $('#btn-usage'),
+  usageLabel: $('#usage-label'),
+  usageMenu: $('#usage-menu'),
   btnAgent: $('#btn-agent'),
   agentMenu: $('#agent-menu'),
   plusMenu: $('#plus-menu'),
@@ -64,6 +68,7 @@ function newSession() {
     updatedAt: Date.now(),
     messages: [],
     draft: { text: '', quote: '', images: [], files: [] },
+    usageTotal: emptyUsageTotal(),
     streamingReqId: null,
     requestGeneration: 0
   }
@@ -100,6 +105,7 @@ function normalizeSession(s) {
     images: normalizeImages(s.draft?.images),
     files: [...(s.draft?.files || [])]
   }
+  s.usageTotal = normalizeUsageTotal(s.usageTotal)
   s.streamingReqId = null
   s.requestGeneration = 0
   return s
@@ -128,6 +134,7 @@ function writeDraft(draft: any = {}) {
   autoGrow()
   renderAttachChips()
   updateSendBtn()
+  renderSessionUsage()
 }
 
 function syncDraft() {
@@ -487,7 +494,7 @@ function renderMsg(m, idx) {
     if (m.durationMs != null) {
       const meta = document.createElement('div')
       meta.className = 'reply-meta'
-      meta.textContent = `回复耗时 ${formatDuration(m.durationMs)}`
+      meta.textContent = `回复耗时 ${formatDuration(m.durationMs)}${formatTokenUsage(m.usage)}`
       el.appendChild(meta)
     }
   }
@@ -698,6 +705,102 @@ function formatDuration(ms) {
   return `${hours} 小时 ${minutes % 60} 分 ${seconds} 秒`
 }
 
+function addUsage(a, b) {
+  if (!a) return b ? { ...b } : null
+  if (!b) return { ...a }
+  const promptTokens = a.promptTokens != null && b.promptTokens != null ? a.promptTokens + b.promptTokens : null
+  const completionTokens = a.completionTokens != null && b.completionTokens != null ? a.completionTokens + b.completionTokens : null
+  const knownTotal = a.totalTokens != null && b.totalTokens != null ? a.totalTokens + b.totalTokens : null
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: knownTotal != null ? knownTotal : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null)
+  }
+}
+
+function emptyUsageTotal() {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    reportedRequests: 0,
+    missingUsageRequests: 0
+  }
+}
+
+function normalizeUsageTotal(total) {
+  const base = emptyUsageTotal()
+  const number = value => Number.isFinite(Number(value)) ? Number(value) : 0
+  return {
+    ...base,
+    promptTokens: number(total?.promptTokens),
+    completionTokens: number(total?.completionTokens),
+    totalTokens: number(total?.totalTokens),
+    reportedRequests: number(total?.reportedRequests),
+    missingUsageRequests: number(total?.missingUsageRequests)
+  }
+}
+
+function recordSessionUsage(target, usage) {
+  const current = normalizeUsageTotal(target?.usageTotal)
+  const totals = usage ? addUsage(current, usage) : current
+  target.usageTotal = {
+    ...totals,
+    reportedRequests: current.reportedRequests + (usage ? 1 : 0),
+    missingUsageRequests: current.missingUsageRequests + (usage ? 0 : 1)
+  }
+  if (target === session) renderSessionUsage()
+  return target.usageTotal
+}
+
+function formatTokenCount(value) {
+  return String(value ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function formatTokenUsage(usage) {
+  if (usage?.totalTokens == null) return ''
+  const format = value => value == null ? '未知' : formatTokenCount(value)
+  return ` · Tokens ${format(usage.totalTokens)}（输入 ${format(usage.promptTokens)} / 输出 ${format(usage.completionTokens)}）`
+}
+
+function renderSessionUsage() {
+  const total = normalizeUsageTotal(session.usageTotal)
+  const visible = total.totalTokens > 0
+  els.btnUsage.classList.toggle('hidden', !visible)
+  els.usageLabel.textContent = formatTokenCount(total.totalTokens)
+  els.btnUsage.title = [
+    '当前会话累计消耗',
+    `Tokens ${formatTokenCount(total.totalTokens)}`,
+    `输入 ${formatTokenCount(total.promptTokens)} / 输出 ${formatTokenCount(total.completionTokens)}`,
+    `已统计 ${total.reportedRequests} 次请求${total.missingUsageRequests ? `；${total.missingUsageRequests} 次未上报` : ''}`
+  ].join('\n')
+  if (!els.usageMenu.classList.contains('hidden')) renderUsageMenu()
+}
+
+function renderUsageMenu() {
+  const total = normalizeUsageTotal(session.usageTotal)
+  els.usageMenu.innerHTML = `
+    <div class="usage-title">当前会话累计消耗</div>
+    <div class="usage-total">${formatTokenCount(total.totalTokens)}</div>
+    <div class="usage-grid">
+      <span>输入</span><b>${formatTokenCount(total.promptTokens)}</b>
+      <span>输出</span><b>${formatTokenCount(total.completionTokens)}</b>
+      <span>已统计</span><b>${total.reportedRequests} 次请求</b>
+      ${total.missingUsageRequests ? `<span>未上报</span><b>${total.missingUsageRequests} 次请求</b>` : ''}
+    </div>
+    <div class="usage-note">仅统计服务端返回的真实 usage，包含意图识别与最终执行请求；不使用本地 tokenizer 估算。编辑、重试或删除消息不会扣减已发生消耗。</div>
+  `
+}
+
+function positionUsageMenu() {
+  const parent = els.btnUsage.offsetParent
+  if (!parent) return
+  const width = els.usageMenu.offsetWidth || 320
+  const left = els.btnUsage.offsetLeft + els.btnUsage.offsetWidth / 2 - width / 2
+  els.usageMenu.style.left = `${Math.max(0, Math.min(left, parent.clientWidth - width))}px`
+  els.usageMenu.style.right = 'auto'
+}
+
 async function focusSessionById(id) {
   if (!id || session.id === id) {
     els.scroll.scrollTop = els.scroll.scrollHeight
@@ -830,6 +933,11 @@ async function routeAndRespond(user, replyStartedAt = Date.now(), owner = sessio
     }
   }
 
+  if (route.usageKnown) {
+    recordSessionUsage(owner, route.usage)
+    void saveSession(owner)
+  }
+
   if (intentJob !== jobId || !owner.messages.includes(intentMsg)) {
     intentMsg.done = true
     intentMsg.aborted = true
@@ -844,6 +952,7 @@ async function routeAndRespond(user, replyStartedAt = Date.now(), owner = sessio
 
   intentMsg.done = true
   intentMsg.reasoning = `意图识别：${route.reason || '已完成'}`
+  intentMsg.usage = addUsage(intentMsg.usage, route.usage)
   if (session === owner) refreshMsgEl(intentMsg)
 
   if (!config.hasKey && !route.delegated) {
@@ -1024,6 +1133,9 @@ async function respond(delegated = false, existing = null, requestedAgent = null
         m.done = true
         m.reasoningDone = true
         m.durationMs = Date.now() - (m.replyStartedAt || m.__lastEventAt || Date.now())
+        // 本地 Agent 未上报 usage 时不把意图识别消耗伪装成整轮消耗。
+        m.usage = ev.agent && !ev.usage ? null : addUsage(m.usage, ev.usage)
+        if (ev.ok && !ev.aborted) recordSessionUsage(owner, ev.usage)
         if (typeof ev.final === 'string') {
           m.text = ev.final
           m.__started = !!ev.final
@@ -1170,7 +1282,7 @@ async function routeRequest(prompt = '', options: any = {}, onIntent?: any) {
       const delegated = result.useAgent && result.confidence >= 0.55
       const detail = `${delegated ? '路由本地 Agent' : 'GLM 直答'}；置信度 ${Math.round((result.confidence || 0) * 100)}%；${result.reason || '无补充说明'}`
       emitIntent(delegated ? 'done' : 'done', detail)
-      return { delegated, reason: result.reason || '', confidence: result.confidence }
+      return { delegated, reason: result.reason || '', confidence: result.confidence, usage: result.usage, usageKnown: true }
     } catch (err) {
       console.warn('[intent] 本地 Agent 意图识别失败:', err)
       emitIntent('error', err?.message || '意图识别失败')
@@ -1454,6 +1566,7 @@ function clearPending() {
   els.attachChips.innerHTML = ''
   els.chips.classList.add('hidden')
   updateSendBtn()
+  renderSessionUsage()
 }
 
 function renderAttachChips() {
@@ -1769,8 +1882,10 @@ function toggleMenu(menu: any, show?: boolean) {
     if (menu === els.modelMenu) renderModelMenu()
     if (menu === els.effortMenu) renderEffortMenu()
     if (menu === els.agentMenu) renderAgentMenu()
-    ;[els.modelMenu, els.effortMenu, els.plusMenu, els.moreMenu].forEach(m => m !== menu && m.classList.add('hidden'))
+    if (menu === els.usageMenu) renderUsageMenu()
+    ;[els.modelMenu, els.effortMenu, els.agentMenu, els.usageMenu, els.plusMenu, els.moreMenu].forEach(m => m !== menu && m.classList.add('hidden'))
     menu.classList.remove('hidden')
+    if (menu === els.usageMenu) positionUsageMenu()
   } else {
     menu.classList.add('hidden')
   }
@@ -1778,9 +1893,9 @@ function toggleMenu(menu: any, show?: boolean) {
 
 document.addEventListener('mousedown', e => {
   const inMenu = e.target.closest('.menu')
-  const inBtn = e.target.closest('#btn-agent, #btn-model, #btn-effort, #btn-plus, #btn-more')
+  const inBtn = e.target.closest('#btn-agent, #btn-model, #btn-effort, #btn-usage, #btn-plus, #btn-more')
   if (!inMenu && !inBtn) {
-    ;[els.agentMenu, els.modelMenu, els.effortMenu, els.plusMenu, els.moreMenu].forEach(m => m.classList.add('hidden'))
+    ;[els.agentMenu, els.modelMenu, els.effortMenu, els.usageMenu, els.plusMenu, els.moreMenu].forEach(m => m.classList.add('hidden'))
   }
   // 点击历史面板以外的任意区域时自动收起历史记录。
   if (!e.target.closest('#history-panel')) els.historyPanel.classList.add('hidden')
@@ -1967,6 +2082,10 @@ els.btnAgent.onclick = async (e?: any) => {
 }
 $('#btn-model').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.modelMenu) }
 $('#btn-effort').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.effortMenu) }
+els.btnUsage.onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.usageMenu) }
+window.addEventListener('resize', () => {
+  if (!els.usageMenu.classList.contains('hidden')) positionUsageMenu()
+})
 $('#btn-more').onclick = (e?: any) => { e.stopPropagation(); toggleMenu(els.moreMenu) }
 $('#btn-pin').onclick = async () => {
   const pinned = await window.askAPI.togglePin()
@@ -2108,6 +2227,7 @@ function newTopicNoSave() {
 
 autoGrow()
 updateSendBtn()
+renderSessionUsage()
 els.input.focus()
 
 // 流式输出可能长时间只有工具在跑；周期性把“仍在执行”状态画出来。

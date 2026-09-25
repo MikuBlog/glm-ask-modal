@@ -818,6 +818,25 @@ button { font-family: inherit; }
 #agent-menu { bottom: 40px; right: 256px; min-width: 230px; }
 #model-menu { bottom: 40px; right: 170px; min-width: 200px; }
 #effort-menu { bottom: 40px; right: 52px; min-width: 132px; }
+#usage-menu {
+  bottom: 42px;
+  left: 0;
+  right: auto;
+  width: 320px;
+  transform: none;
+}
+#usage-menu::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  transform: translateX(-50%) rotate(45deg);
+}
 
 .dbtn.effort {
   gap: 5px;
@@ -829,6 +848,54 @@ button { font-family: inherit; }
 }
 .dbtn.effort .ic.brain { width: 15px; height: 15px; color: #4e5969; }
 .menu .row .check { color: var(--accent); display: flex; align-items: center; }
+
+.dbtn.usage {
+  flex: none;
+  gap: 4px;
+  background: var(--chip);
+  border-radius: 9px;
+  height: 30px;
+  padding: 0 8px;
+  color: #4e5969;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.dbtn.usage .usage-text { font-weight: 500; }
+.usage-panel {
+  padding: 12px;
+  cursor: default;
+}
+.usage-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4e5969;
+  margin-bottom: 8px;
+}
+.usage-total {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 9px;
+}
+.usage-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 14px;
+  font-size: 12.5px;
+  color: #4e5969;
+  margin-bottom: 10px;
+}
+.usage-grid b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.usage-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #a6adb8;
+}
 
 .send {
   width: 32px;

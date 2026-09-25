@@ -5,6 +5,15 @@ function chatUrl(baseUrl) {
   return baseUrl.replace(/\/+$/, '') + '/chat/completions'
 }
 
+function normalizeUsage(usage) {
+  const number = value => Number.isFinite(Number(value)) ? Number(value) : null
+  return {
+    promptTokens: number(usage?.prompt_tokens),
+    completionTokens: number(usage?.completion_tokens),
+    totalTokens: number(usage?.total_tokens)
+  }
+}
+
 async function stream({ reqId, baseUrl, apiKey, model, messages, extra, onEvent }) {
   const ac = new AbortController()
   controllers.set(reqId, ac)
@@ -33,7 +42,13 @@ async function stream({ reqId, baseUrl, apiKey, model, messages, extra, onEvent 
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`
       },
-      body: JSON.stringify({ model, messages, stream: true, ...(extra || {}) }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        ...(extra || {}),
+        stream_options: { include_usage: true }
+      }),
       signal: ac.signal
     })
     if (!res.ok) {
@@ -51,6 +66,7 @@ async function stream({ reqId, baseUrl, apiKey, model, messages, extra, onEvent 
     const reader = res.body.getReader()
     const dec = new TextDecoder()
     let buf = ''
+    let lastUsage = null
     for (;;) {
       const { done, value } = await reader.read()
       armIdleTimer()
@@ -62,16 +78,17 @@ async function stream({ reqId, baseUrl, apiKey, model, messages, extra, onEvent 
         buf = buf.slice(idx + 1)
         if (!line.startsWith('data:')) continue
         const data = line.slice(5).trim()
-        if (data === '[DONE]') return finish({ ok: true })
+        if (data === '[DONE]') return finish({ ok: true, usage: lastUsage })
         try {
           const j = JSON.parse(data)
+          if (j.usage) lastUsage = normalizeUsage(j.usage)
           const delta = j.choices?.[0]?.delta || {}
           if (delta.reasoning_content) onEvent({ type: 'reasoning', text: delta.reasoning_content })
           if (delta.content) onEvent({ type: 'content', text: delta.content })
         } catch { /* 忽略心跳等非 JSON 行 */ }
       }
     }
-    finish({ ok: true })
+    finish({ ok: true, usage: lastUsage })
   } catch (err) {
     if (connectTimedOut) finish({ ok: false, error: '请求超时（90 秒无响应数据）' })
     if (err.name === 'AbortError') finish({ ok: true, aborted: true })
@@ -103,7 +120,7 @@ async function complete({ baseUrl, apiKey, model, messages, temperature = 0, max
         stream: false,
         temperature,
         max_tokens: maxTokens,
-        thinking: { type: 'disabled' }
+        thinking: { type: 'enabled', effort: 'low' }
       }),
       signal: ac.signal
     })
@@ -119,7 +136,10 @@ async function complete({ baseUrl, apiKey, model, messages, temperature = 0, max
       throw new Error(msg)
     }
     const j = await res.json()
-    return String(j.choices?.[0]?.message?.content || '').trim()
+    return {
+      text: String(j.choices?.[0]?.message?.content || '').trim(),
+      usage: normalizeUsage(j.usage)
+    }
   } catch (err) {
     if (err.name === 'AbortError') throw new Error('意图识别超时')
     throw err
