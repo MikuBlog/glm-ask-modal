@@ -1567,6 +1567,7 @@ function clearPending() {
   els.chips.classList.add('hidden')
   updateSendBtn()
   renderSessionUsage()
+  hideSelbar()
 }
 
 function renderAttachChips() {
@@ -2016,7 +2017,8 @@ function autoGrow() {
   els.input.style.height = Math.min(els.input.scrollHeight, 160) + 'px'
 }
 
-els.input.addEventListener('input', () => { autoGrow(); updateSendBtn() })
+els.input.addEventListener('focus', () => hideSelbar())
+els.input.addEventListener('input', () => { hideSelbar(); autoGrow(); updateSendBtn() })
 // 输入内容跟随当前话题保存，切换历史 / 新话题时分别恢复。
 els.input.addEventListener('input', () => {
   session.draft.text = els.input.value

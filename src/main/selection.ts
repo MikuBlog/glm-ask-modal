@@ -269,7 +269,7 @@ function stopHookRetry() {
   }
 }
 
-function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, onScreenshotCancel, onSwitchSpace }: any) {
+function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, onScreenshotCancel, onSwitchSpace, onTyping }: any) {
   let lastHotkeyDown = 0
   let lastShotDown = 0
   let selectionTriggerTimer: any = null
@@ -277,6 +277,16 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
     UiohookKey.ArrowLeft, UiohookKey.ArrowRight, UiohookKey.ArrowUp, UiohookKey.ArrowDown,
     UiohookKey.Home, UiohookKey.End, UiohookKey.PageUp, UiohookKey.PageDown
   ])
+  const nonTypingKeys = new Set([
+    ...selectionNavigationKeys,
+    UiohookKey.Ctrl, UiohookKey.CtrlRight,
+    UiohookKey.Alt, UiohookKey.AltRight,
+    UiohookKey.Shift, UiohookKey.ShiftRight,
+    UiohookKey.Meta, UiohookKey.MetaRight,
+    UiohookKey.Tab, UiohookKey.CapsLock, UiohookKey.NumLock, UiohookKey.ScrollLock,
+    ...Array.from({ length: 24 }, (_, i) => UiohookKey[`F${i + 1}`])
+  ])
+  const isTypingKey = e => !e.metaKey && !e.ctrlKey && !e.altKey && !nonTypingKeys.has(e.keycode)
 
   const selectionKeyDelay = (e: any) => {
     if (e.keycode === UiohookKey.C && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) return 180
@@ -363,6 +373,13 @@ function initSelection({ onPress, onGesture, onHotkeyKeys, onScreenshotTrigger, 
       const isShotCombo = e.keycode === UiohookKey.A && !e.ctrlKey &&
         ((e.metaKey && e.altKey) || (e.metaKey && e.shiftKey) || (e.altKey && !e.metaKey && !e.shiftKey))
       const selectionDelay = selectionKeyDelay(e)
+      if (isTypingKey(e)) {
+        if (selectionTriggerTimer) {
+          clearTimeout(selectionTriggerTimer)
+          selectionTriggerTimer = null
+        }
+        onTyping && onTyping()
+      }
       if (selectionDelay) {
         // uiohook 在部分前台应用里收不到 keyup；在 keydown（含按住重复）上
         // 做防抖，松手/组合键完成后自然触发一次探测。

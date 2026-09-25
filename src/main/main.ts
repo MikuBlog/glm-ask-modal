@@ -477,6 +477,7 @@ function startSelectionFlow() {
       hideToolbar()
     },
     onHotkeyKeys: () => toggleAsk(),
+    onTyping: () => hideToolbar(),
     onPress: pt => {
       // macOS 文件选择器可能在主窗口边界外；全局鼠标钩子会把对话框内的
       // 点击误判为“点击弹窗外部”，选文件期间必须禁止隐藏主弹窗。
