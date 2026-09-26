@@ -277,11 +277,17 @@ function usageFromAgentEvent(agent, ev) {
   const number = value => Number.isFinite(Number(value)) ? Number(value) : null
   const promptTokens = number(usage.input_tokens ?? usage.promptTokens)
   const completionTokens = number(usage.output_tokens ?? usage.completionTokens)
-  return {
+  const modelUsage = Array.isArray(ev.modelUsage) ? ev.modelUsage.find(Boolean) : null
+  const result: any = {
     promptTokens,
     completionTokens,
     totalTokens: number(usage.total_tokens ?? usage.totalTokens) ?? (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null)
   }
+  const contextLimit = number(modelUsage?.contextWindow)
+  const contextModel = modelUsage?.canonicalModel || modelUsage?.model
+  if (contextLimit != null) result.contextLimit = contextLimit
+  if (contextModel) result.contextModel = contextModel
+  return result
 }
 
 // 启动本地 agent 的 headless 入口。它们自身会加载各自配置里的 skills/plugins/MCP。

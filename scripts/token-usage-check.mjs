@@ -29,10 +29,15 @@ assert.match(renderer, /positionUsageMenu\(\)/)
 assert.match(renderer, /usageLabel\.textContent = formatTokenCount/)
 assert.doesNotMatch(renderer, /usageLabel\.textContent = `Tokens /)
 assert.match(renderer, /当前会话累计消耗/)
+assert.match(renderer, /recordContextUsage\(owner,\s*ev\.usage/)
+assert.match(renderer, /formatContextUsage/)
 
 const usageMenuCss = css.match(/#usage-menu\s*\{[\s\S]*?\}/)?.[0] || ''
 assert.match(usageMenuCss, /width:\s*320px/)
 assert.match(usageMenuCss, /right:\s*auto/)
+assert.match(css, /\.usage-context-track/)
+assert.match(css, /\.usage-context-fill/)
+assert.match(css, /linear-gradient\(90deg/)
 
 function fn(name) {
   const start = renderer.indexOf(`function ${name}(`)
@@ -71,8 +76,12 @@ vm.runInNewContext([
   fn('emptyUsageTotal'),
   fn('normalizeUsageTotal'),
   fn('formatTokenCount'),
+  fn('formatContextTokens'),
   fn('formatTokenUsage'),
   fn('recordSessionUsage'),
+  fn('contextLimitForModel'),
+  fn('recordContextUsage'),
+  fn('formatContextUsage'),
   fn('renderSessionUsage'),
   fn('renderUsageMenu'),
   fn('positionUsageMenu')
@@ -114,6 +123,24 @@ assert.equal(JSON.stringify(session.usageTotal), JSON.stringify({
 context.renderSessionUsage()
 assert.equal(context.els.usageLabel.textContent, '151')
 assert.match(context.els.btnUsage.title, /Tokens 151/)
+
+context.session.contextUsage = null
+context.recordContextUsage(context.session, {
+  promptTokens: 158000,
+  completionTokens: 10000,
+  contextLimit: 1000000,
+  contextModel: 'glm-5.3-flash'
+}, null)
+assert.equal(
+  JSON.stringify(context.session.contextUsage),
+  JSON.stringify({
+    tokens: 168000,
+    limit: 1000000,
+    model: 'glm-5.3-flash'
+  })
+)
+assert.equal(context.formatContextUsage(context.session.contextUsage), '16.8万/100万（16.8%）')
+assert.equal(context.formatContextUsage(null), '')
 
 Object.assign(context.els.btnUsage, { offsetLeft: 300, offsetWidth: 100, offsetParent: context.els.dockbar })
 context.positionUsageMenu()

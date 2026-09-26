@@ -69,6 +69,7 @@ function newSession() {
     messages: [],
     draft: { text: '', quote: '', images: [], files: [] },
     usageTotal: emptyUsageTotal(),
+    contextUsage: null,
     streamingReqId: null,
     requestGeneration: 0
   }
@@ -113,6 +114,11 @@ function normalizeSession(s) {
     files: [...(s.draft?.files || [])]
   }
   s.usageTotal = normalizeUsageTotal(s.usageTotal)
+  const contextTokens = Number(s.contextUsage?.tokens)
+  const contextLimit = Number(s.contextUsage?.limit)
+  s.contextUsage = Number.isFinite(contextTokens) && Number.isFinite(contextLimit) && contextTokens >= 0 && contextLimit > 0
+    ? { tokens: contextTokens, limit: contextLimit, model: String(s.contextUsage.model || '') }
+    : null
   s.streamingReqId = null
   s.requestGeneration = 0
   return s
@@ -760,8 +766,36 @@ function recordSessionUsage(target, usage) {
   return target.usageTotal
 }
 
+function contextLimitForModel(model) {
+  return /^glm-5\.3(?:-flashx?)?$/i.test(String(model || '')) ? 1_000_000 : null
+}
+
+function recordContextUsage(target, usage, model) {
+  const contextModel = usage?.contextModel || model
+  const tokens = usage?.promptTokens != null && usage?.completionTokens != null
+    ? usage.promptTokens + usage.completionTokens
+    : null
+  const limit = usage?.contextLimit ?? contextLimitForModel(contextModel)
+  if (!target || tokens == null || !limit || tokens < 0) return target?.contextUsage || null
+  target.contextUsage = { tokens, limit, model: String(contextModel || '') }
+  if (target === session) renderSessionUsage()
+  return target.contextUsage
+}
+
 function formatTokenCount(value) {
   return String(value ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function formatContextTokens(value) {
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(2).replace(/\.?0+$/, '')}亿`
+  if (value >= 10_000) return `${(value / 10_000).toFixed(1).replace(/\.0$/, '')}万`
+  return formatTokenCount(value)
+}
+
+function formatContextUsage(contextUsage) {
+  if (!contextUsage?.limit || contextUsage.tokens == null) return ''
+  const percent = Math.min(100, contextUsage.tokens / contextUsage.limit * 100)
+  return `${formatContextTokens(contextUsage.tokens)}/${formatContextTokens(contextUsage.limit)}（${percent.toFixed(1).replace(/\.0$/, '')}%）`
 }
 
 function formatTokenUsage(usage) {
@@ -772,6 +806,7 @@ function formatTokenUsage(usage) {
 
 function renderSessionUsage() {
   const total = normalizeUsageTotal(session.usageTotal)
+  const contextUsage = formatContextUsage(session.contextUsage)
   const visible = total.totalTokens > 0
   els.btnUsage.classList.toggle('hidden', !visible)
   els.usageLabel.textContent = formatTokenCount(total.totalTokens)
@@ -779,14 +814,24 @@ function renderSessionUsage() {
     '当前会话累计消耗',
     `Tokens ${formatTokenCount(total.totalTokens)}`,
     `输入 ${formatTokenCount(total.promptTokens)} / 输出 ${formatTokenCount(total.completionTokens)}`,
+    contextUsage ? `上下文容量 ${contextUsage}` : '',
     `已统计 ${total.reportedRequests} 次请求${total.missingUsageRequests ? `；${total.missingUsageRequests} 次未上报` : ''}`
-  ].join('\n')
+  ].filter(Boolean).join('\n')
   if (!els.usageMenu.classList.contains('hidden')) renderUsageMenu()
 }
 
 function renderUsageMenu() {
   const total = normalizeUsageTotal(session.usageTotal)
+  const contextUsage = session.contextUsage
+  const contextText = formatContextUsage(contextUsage)
   els.usageMenu.innerHTML = `
+    ${contextUsage ? `
+    <div class="usage-context">
+      <div class="usage-context-head">
+        <span>上下文容量</span><b>${contextText}</b>
+      </div>
+      <div class="usage-context-track"><div class="usage-context-fill" style="width:${Math.min(100, contextUsage.tokens / contextUsage.limit * 100)}%"></div></div>
+    </div>` : ''}
     <div class="usage-title">当前会话累计消耗</div>
     <div class="usage-total">${formatTokenCount(total.totalTokens)}</div>
     <div class="usage-grid">
@@ -1146,6 +1191,7 @@ async function respond(delegated = false, existing = null, requestedAgent = null
         // 本地 Agent 未上报 usage 时不把意图识别消耗伪装成整轮消耗。
         m.usage = ev.agent && !ev.usage ? null : addUsage(m.usage, ev.usage)
         if (ev.ok && !ev.aborted) recordSessionUsage(owner, ev.usage)
+        if (ev.ok && !ev.aborted) recordContextUsage(owner, ev.usage, ev.agent ? null : config.model)
         if (typeof ev.final === 'string') {
           m.text = ev.final
           m.__started = !!ev.final
