@@ -48,6 +48,19 @@ function saveConfig(patch) {
 }
 
 // ---------- 会话历史 ----------
+function normalizeStoredSession(s: any) {
+  if (!s) return s
+  ;(s.messages || []).forEach((m: any) => {
+    if (m.role === 'assistant' && !m.done) {
+      m.done = true
+      m.reasoningDone = true
+      m.interrupted = true
+      m.error ||= '应用意外退出，回复已中断'
+    }
+  })
+  return s
+}
+
 function readAllSessions() {
   try {
     return JSON.parse(fs.readFileSync(filePath('history.json'), 'utf8')).sessions || []
@@ -83,7 +96,7 @@ function saveSession(session) {
 }
 
 function getSession(id) {
-  return readAllSessions().find(s => s.id === id) || null
+  return normalizeStoredSession(readAllSessions().find(s => s.id === id) || null)
 }
 
 function deleteSession(id) {

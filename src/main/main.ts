@@ -717,8 +717,9 @@ function registerIpc() {
         { role: 'user', content: JSON.stringify(user) }
       ],
       temperature: 0,
-      maxTokens: 256,
-      timeoutMs: 30000
+      maxTokens: 1024,
+      timeoutMs: 30000,
+      requireObject: true
     })
     const match = raw.text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error('意图识别返回格式无效')

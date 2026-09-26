@@ -14,6 +14,22 @@ function normalizeUsage(usage) {
   }
 }
 
+function parseJsonObject(text) {
+  const match = String(text || '').match(/\{[\s\S]*\}/)
+  if (!match) return null
+  try { return JSON.parse(match[0]) } catch { return null }
+}
+
+function sumUsage(usages) {
+  if (!usages.length) return null
+  if (usages.some(u => u?.totalTokens == null)) return usages[usages.length - 1]
+  return usages.reduce((a, b) => ({
+    promptTokens: a.promptTokens + b.promptTokens,
+    completionTokens: a.completionTokens + b.completionTokens,
+    totalTokens: a.totalTokens + b.totalTokens
+  }))
+}
+
 async function stream({ reqId, baseUrl, apiKey, model, messages, extra, onEvent }) {
   const ac = new AbortController()
   controllers.set(reqId, ac)
@@ -104,11 +120,11 @@ function abort(reqId) {
 }
 
 // 独立意图识别：一次性小请求，不占用主对话流式通道。
-async function complete({ baseUrl, apiKey, model, messages, temperature = 0, maxTokens = 160, timeoutMs = 10000 }) {
+async function complete({ baseUrl, apiKey, model, messages, temperature = 0, maxTokens = 160, timeoutMs = 10000, requireObject = false }) {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), timeoutMs)
   try {
-    const res = await fetch(chatUrl(baseUrl), {
+    const request = thinking => fetch(chatUrl(baseUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -120,25 +136,47 @@ async function complete({ baseUrl, apiKey, model, messages, temperature = 0, max
         stream: false,
         temperature,
         max_tokens: maxTokens,
-        thinking: { type: 'enabled', effort: 'low' }
+        thinking
       }),
       signal: ac.signal
     })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      let msg = `HTTP ${res.status}`
+    const responseError = (status, body) => {
+      let msg = `HTTP ${status}`
       try {
         const j = JSON.parse(body)
         msg += `：${j.error?.message || j.message || body.slice(0, 160)}`
       } catch {
         if (body) msg += `：${body.slice(0, 160)}`
       }
-      throw new Error(msg)
+      return new Error(msg)
     }
-    const j = await res.json()
+
+    const attempts = [
+      { thinking: { type: 'disabled' } },
+      { thinking: { type: 'enabled', effort: 'low' } }
+    ]
+    const usages = []
+    let text = ''
+    for (let i = 0; i < attempts.length; i++) {
+      const res = await request(attempts[i].thinking)
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        // 兼容不支持关闭 thinking 的 endpoint：仅对明确拒绝 disabled 的 400 降级。
+        const canFallback = i === 0 &&
+          res.status === 400 &&
+          /always engages in thinking|cannot be disabled/i.test(body)
+        if (!canFallback) throw responseError(res.status, body)
+        continue
+      }
+      const j = await res.json()
+      text = String(j.choices?.[0]?.message?.content || '').trim()
+      if (j.usage) usages.push(normalizeUsage(j.usage))
+      // endpoint 接受 disabled 但偶发没有输出 JSON 时，也补一次 low thinking。
+      if (!requireObject || parseJsonObject(text)) break
+    }
     return {
-      text: String(j.choices?.[0]?.message?.content || '').trim(),
-      usage: normalizeUsage(j.usage)
+      text,
+      usage: sumUsage(usages)
     }
   } catch (err) {
     if (err.name === 'AbortError') throw new Error('意图识别超时')

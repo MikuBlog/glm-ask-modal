@@ -98,6 +98,13 @@ function normalizeSession(s) {
   s.messages = s.messages || []
   s.messages.forEach(m => {
     if (m.images) m.images = normalizeImages(m.images)
+    // 强退时不会触发 stream done；历史恢复后不能继续伪装成正在执行。
+    if (m.role === 'assistant' && !m.done) {
+      m.done = true
+      m.reasoningDone = true
+      m.interrupted = true
+      m.error ||= '应用意外退出，回复已中断'
+    }
   })
   s.draft = {
     text: s.draft?.text || '',
@@ -820,6 +827,10 @@ async function focusSessionById(id) {
       sessions.set(target.id, target)
     }
   }
+  if (target && !activeStream(target)) {
+    target = normalizeSession(target)
+    sessions.set(target.id, target)
+  }
   if (!target) return
   rememberScrollTop()
   session = target
@@ -962,7 +973,7 @@ async function routeAndRespond(user, replyStartedAt = Date.now(), owner = sessio
     return
   }
   intentMsg.routeAgent = route.agent || null
-  respond(route.delegated, intentMsg, route.agent)
+  respond(route.delegated, intentMsg, route.agent, owner)
 }
 
 async function send() {
@@ -1027,8 +1038,7 @@ function supersedeActiveStream(target = session) {
   if (target === session) updateSendBtn()
 }
 
-async function respond(delegated = false, existing = null, requestedAgent = null) {
-  const owner = session
+async function respond(delegated = false, existing = null, requestedAgent = null, owner = session) {
   if (existing && !owner.messages.includes(existing)) return
   let routeAgent = requestedAgent || existing?.routeAgent || null
   supersedeActiveStream(owner)
