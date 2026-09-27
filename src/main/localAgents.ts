@@ -277,7 +277,9 @@ function usageFromAgentEvent(agent, ev) {
   const number = value => Number.isFinite(Number(value)) ? Number(value) : null
   const promptTokens = number(usage.input_tokens ?? usage.promptTokens)
   const completionTokens = number(usage.output_tokens ?? usage.completionTokens)
-  const modelUsage = Array.isArray(ev.modelUsage) ? ev.modelUsage.find(Boolean) : null
+  const modelUsage = Array.isArray(ev.modelUsage)
+    ? ev.modelUsage.find(Boolean)
+    : (ev.modelUsage && typeof ev.modelUsage === 'object' ? Object.values(ev.modelUsage).find(Boolean) : null)
   const result: any = {
     promptTokens,
     completionTokens,

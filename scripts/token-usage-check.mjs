@@ -104,6 +104,22 @@ assert.equal(JSON.stringify(agentContext.usageFromAgentEvent('claude', {
   type: 'result',
   usage: { input_tokens: 24293, output_tokens: 30 }
 })), JSON.stringify({ promptTokens: 24293, completionTokens: 30, totalTokens: 24323 }))
+assert.equal(JSON.stringify(agentContext.usageFromAgentEvent('claude', {
+  type: 'result',
+  usage: { input_tokens: 24255, output_tokens: 34 },
+  modelUsage: {
+    'glm-5.3-flash[1m]': {
+      contextWindow: 1000000,
+      canonicalModel: 'glm-5.3-flash[1m]'
+    }
+  }
+})), JSON.stringify({
+  promptTokens: 24255,
+  completionTokens: 34,
+  totalTokens: 24289,
+  contextLimit: 1000000,
+  contextModel: 'glm-5.3-flash[1m]'
+}))
 assert.equal(JSON.stringify(agentContext.usageFromAgentEvent('codex', {
   type: 'turn.completed',
   usage: { input_tokens: 37594, output_tokens: 44 }
