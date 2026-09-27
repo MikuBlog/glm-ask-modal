@@ -69,7 +69,7 @@ const ASK_MIN_W = 560
 const ASK_MIN_H = 480
 const ASK_MAX_W = 1600
 const ASK_MAX_H = 1200
-// Electron 的 screen-saver 是最高公开层级；设置/权限引导必须高于问一问 panel。
+// 划词工具条用最高公开层级；设置/权限引导也必须高于问一问 panel。
 const TOP_WINDOW_LEVEL = 'screen-saver'
 const debugLog = (...args) => {
   if (process.env.GLM_ASK_DEBUG) console.log('[ask-debug]', new Date().toISOString(), ...args)
@@ -243,9 +243,9 @@ function createAsk() {
   })
   // macOS 可能用 NSWindow 自动保存的旧 frame 覆盖构造尺寸；首次显示后强制还原。
   askWin.__restoreSavedSize = true
-  // 最高层级 + 全空间可达；真正从屏幕消失由 onSwitchSpace/horizontal swipe hide 完成。
+  // floating 置顶 + 全空间可达；避免问一问压过系统级浮层。
   askWin.__pinned = true
-  askWin.setAlwaysOnTop(true, 'screen-saver')
+  askWin.setAlwaysOnTop(true, 'floating')
   askWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   askWin.loadFile(path.join(__dirname, '..', 'renderer', 'ask.html'))
   askWin.webContents.once('did-finish-load', () => {
